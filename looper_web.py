@@ -109,14 +109,17 @@ class WebLooper:
         
         # Thread safety
         self.lock = threading.Lock()
-        
+
         # Audio stream
         self.stream = None
-        
+
         # Stats
         self.callback_time = 0
         self.dropout_count = 0
-        
+
+        # Undo stack (store deleted layers)
+        self.deleted_layers_stack = []  # Stack of (layer, original_position) tuples
+
         print("✓ Looper initialized")
     
     # -------------------------------------------------------------------------
@@ -349,17 +352,46 @@ class WebLooper:
             if layer_id <= 0 or layer_id >= len(self.layers):
                 print(f"✗ Cannot delete layer {layer_id}")
                 return False
-            
+
+            # Store deleted layer for undo (keep only last 5 deletions)
+            deleted_layer = self.layers[layer_id]
+            self.deleted_layers_stack.append((deleted_layer, layer_id))
+            if len(self.deleted_layers_stack) > 5:
+                self.deleted_layers_stack.pop(0)
+
             name = self.layers[layer_id].name
             del self.layers[layer_id]
-            
+
             # Renumber remaining layers
             for i, layer in enumerate(self.layers):
                 layer.id = i
-            
+
             print(f"✓ Deleted {name}")
             return True
-    
+
+    def undo_delete(self) -> bool:
+        """Undo the last layer deletion. Returns success."""
+        with self.lock:
+            if not self.deleted_layers_stack:
+                print("✗ Nothing to undo")
+                return False
+
+            # Get last deleted layer
+            deleted_layer, original_position = self.deleted_layers_stack.pop()
+
+            # Add layer back at the end (simpler than trying to restore exact position)
+            new_id = len(self.layers)
+            deleted_layer.id = new_id
+            self.layers.append(deleted_layer)
+
+            print(f"✓ Restored {deleted_layer.name}")
+            return True
+
+    def can_undo(self) -> bool:
+        """Check if there are any deletions to undo."""
+        with self.lock:
+            return len(self.deleted_layers_stack) > 0
+
     def clear_all(self) -> bool:
         """Clear all loops and reset to IDLE state."""
         with self.lock:
@@ -367,6 +399,7 @@ class WebLooper:
             self.master_length = 0
             self.master_position = 0
             self.state = LooperState.IDLE
+            self.deleted_layers_stack = []  # Clear undo stack
             print("✓ All loops cleared")
             return True
     
@@ -520,6 +553,7 @@ class WebLooper:
             dropout_count = self.dropout_count
             layers_data = [layer.to_dict() for layer in self.layers]
             num_layers = len(self.layers)
+            can_undo_delete = len(self.deleted_layers_stack) > 0
         
         # Compute derived values WITHOUT lock
         position_ratio = 0.0
@@ -568,6 +602,9 @@ class WebLooper:
             'trim': {
                 'can_trim': can_trim,
                 'reason': '' if can_trim else ('Add overdubs disabled trimming' if num_layers > 1 else ''),
+            },
+            'undo': {
+                'can_undo': can_undo_delete,
             },
             'stats': {
                 'callback_time_ms': callback_time * 1000,
@@ -1018,7 +1055,16 @@ HTML_TEMPLATE = """
             background: #4a5568;
             color: white;
         }
-        
+
+        .btn-undo {
+            background: #805ad5;
+            color: white;
+        }
+
+        .btn-undo:disabled {
+            background: #553c9a;
+        }
+
         /* Keyboard hint */
         .keyboard-hint {
             text-align: center;
@@ -1531,12 +1577,13 @@ HTML_TEMPLATE = """
         </div>
         
         <div class="keyboard-hint">
-            <kbd>SPACE</kbd> Record / Stop / Overdub &nbsp;|&nbsp; <kbd>T</kbd> Tap tempo
+            <kbd>SPACE</kbd> Record / Stop / Overdub &nbsp;|&nbsp; <kbd>T</kbd> Tap tempo &nbsp;|&nbsp; <kbd>Ctrl+Z</kbd> Undo
         </div>
         
         <div class="controls">
             <button class="btn btn-rec" id="btnRec" onclick="handleRec()">● REC</button>
             <button class="btn btn-overdub" id="btnOverdub" onclick="handleOverdub()" disabled>+ OVERDUB</button>
+            <button class="btn btn-undo" id="btnUndo" onclick="handleUndo()" disabled>↶ UNDO</button>
             <button class="btn btn-clear" onclick="handleClear()">CLEAR</button>
         </div>
         
@@ -1576,6 +1623,9 @@ HTML_TEMPLATE = """
             trim: {
                 can_trim: false,
                 reason: ''
+            },
+            undo: {
+                can_undo: false
             }
         };
         
@@ -1833,7 +1883,11 @@ HTML_TEMPLATE = """
                 }
             }
         }
-        
+
+        function handleUndo() {
+            sendCommand('undo_delete');
+        }
+
         function toggleLayer(layerId) {
             sendCommand('toggle_layer', { layer_id: layerId });
         }
@@ -1853,6 +1907,15 @@ HTML_TEMPLATE = """
         // =================================================================
         
         document.addEventListener('keydown', (e) => {
+            // UNDO: Ctrl+Z or Cmd+Z
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.repeat) {
+                e.preventDefault();
+                if (serverState.undo?.can_undo) {
+                    handleUndo();
+                }
+                return;
+            }
+
             // TAP TEMPO: T key
             if (e.code === 'KeyT' && !e.repeat) {
                 e.preventDefault();
@@ -2263,7 +2326,8 @@ HTML_TEMPLATE = """
             // --- Buttons ---
             const btnRec = document.getElementById('btnRec');
             const btnOverdub = document.getElementById('btnOverdub');
-            
+            const btnUndo = document.getElementById('btnUndo');
+
             // REC button
             btnRec.className = 'btn btn-rec';
             if (state === 'recording_master') {
@@ -2291,7 +2355,10 @@ HTML_TEMPLATE = """
                 btnOverdub.textContent = '+ OVERDUB';
                 btnOverdub.disabled = true;
             }
-            
+
+            // UNDO button
+            btnUndo.disabled = !(serverState.undo?.can_undo);
+
             // --- Layers List ---
             const layersList = document.getElementById('layersList');
             
@@ -2455,6 +2522,8 @@ def handle_command(data):
         looper.set_layer_volume(data.get('layer_id', 0), data.get('volume', 1.0))
     elif command == 'delete_layer':
         looper.delete_layer(data.get('layer_id', 0))
+    elif command == 'undo_delete':
+        looper.undo_delete()
     elif command == 'clear_all':
         looper.clear_all()
     elif command == 'set_bpm':
