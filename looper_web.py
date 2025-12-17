@@ -21,6 +21,15 @@ from enum import Enum
 from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit
 
+# Optional: librosa for tempo detection
+try:
+    import librosa
+    LIBROSA_AVAILABLE = True
+except ImportError:
+    LIBROSA_AVAILABLE = False
+    print("⚠ librosa not installed - tempo detection disabled")
+    print("  Install with: pip install librosa")
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -166,13 +175,30 @@ class WebLooper:
                                     LooperState.RECORDING_OVERDUB):
                     
                     if self.master_length > 0:
-                        # Mix all layers at current position (vectorized for speed)
+                        # Crossfade samples for smooth loop transition
+                        xfade_samples = min(int(0.008 * SAMPLE_RATE), self.master_length // 8)  # 8ms
+                        
+                        # Mix all layers at current position
                         for layer in self.layers:
                             if layer.is_playing and layer.length > 0:
                                 for i in range(frames):
                                     pos = (self.master_position + i) % self.master_length
+                                    
                                     if pos < layer.length:
-                                        output[i] += layer.buffer[pos] * layer.volume
+                                        sample = layer.buffer[pos] * layer.volume
+                                        
+                                        # Apply crossfade near loop boundary (only for overdubs)
+                                        if layer.id > 0 and xfade_samples > 0:
+                                            if pos < xfade_samples:
+                                                # Near start: fade in
+                                                fade = pos / xfade_samples
+                                                sample *= fade
+                                            elif pos >= layer.length - xfade_samples:
+                                                # Near end: fade out
+                                                fade = (layer.length - pos) / xfade_samples
+                                                sample *= fade
+                                        
+                                        output[i] += sample
                         
                         # Check for loop restart (position wrapping)
                         old_position = self.master_position
@@ -184,20 +210,35 @@ class WebLooper:
                             self.state = LooperState.RECORDING_OVERDUB
                             self.recording_buffer = np.zeros(self.master_length, dtype=np.float32)
                             self.recording_position = 0
-                        
-                        # Handle RECORDING_OVERDUB
-                        if self.state == LooperState.RECORDING_OVERDUB:
-                            # Record input
+                            
+                            # Record only the samples that belong to the NEW loop cycle
+                            # (the ones after position wrapped to 0)
                             for i in range(frames):
                                 pos = (old_position + i) % self.master_length
-                                if pos < self.master_length:
-                                    self.recording_buffer[pos] += input_samples[i]
-                            
-                            # Check if overdub complete (loop restarted)
-                            if loop_restarted and self.recording_position > 0:
+                                # Only record if we've wrapped past the boundary
+                                if old_position + i >= self.master_length:
+                                    self.recording_buffer[pos] = input_samples[i]
+                            self.recording_position = self.master_position
+                        
+                        # Handle RECORDING_OVERDUB (normal recording, after start)
+                        elif self.state == LooperState.RECORDING_OVERDUB:
+                            if loop_restarted:
+                                # Loop completed - finalize
+                                # First, record the remaining samples up to the boundary
+                                for i in range(frames):
+                                    pos = (old_position + i) % self.master_length
+                                    # Only record up to the wrap point
+                                    if old_position + i < self.master_length:
+                                        self.recording_buffer[pos] += input_samples[i]
+                                
                                 self._finalize_overdub()
-                            
-                            self.recording_position += frames
+                            else:
+                                # Normal recording
+                                for i in range(frames):
+                                    pos = (old_position + i) % self.master_length
+                                    self.recording_buffer[pos] += input_samples[i]
+                                
+                                self.recording_position += frames
                 
                 # -------------------------------------------------------------
                 # Soft limiting to prevent clipping
@@ -212,9 +253,10 @@ class WebLooper:
             # Lock not acquired - just output pass-through (already in output)
             self.dropout_count += 1
         
-        # Write to output (handle both 1D and 2D arrays)
+        # Write to ALL output channels (handle mono and stereo)
         if outdata.ndim > 1:
-            outdata[:, 0] = output
+            for ch in range(outdata.shape[1]):
+                outdata[:, ch] = output
         else:
             outdata[:] = output
         
@@ -225,7 +267,7 @@ class WebLooper:
         layer_id = len(self.layers)
         name = f"Overdub {layer_id}"
         
-        # Copy buffer (important: don't keep reference to recording_buffer)
+        # Copy buffer - crossfade is applied at playback time
         buffer = self.recording_buffer[:self.master_length].copy()
         
         layer = LoopLayer(layer_id, name, buffer)
@@ -276,21 +318,11 @@ class WebLooper:
                 
                 print(f"  Recorded: {recorded_duration:.2f}s → Quantized: {quantized_duration:.2f}s ({num_bars} bars)")
                 
-                # Adjust buffer
-                if quantized_length <= recorded_length:
-                    # Trim: apply short fade-out at end to avoid click
-                    fade_samples = min(int(0.01 * SAMPLE_RATE), quantized_length // 4)
-                    fade = np.linspace(1.0, 0.0, fade_samples)
-                    self.recording_buffer[quantized_length - fade_samples:quantized_length] *= fade
-                else:
-                    # Extend with silence (loop was too short)
-                    pass  # Buffer is already zeros beyond recorded_length
-                
                 self.master_length = quantized_length
             else:
                 self.master_length = recorded_length
             
-            # Create master layer
+            # Create master layer buffer (no modification - crossfade handled at playback)
             buffer = self.recording_buffer[:self.master_length].copy()
             
             layer = LoopLayer(0, "Master", buffer)
@@ -472,17 +504,9 @@ class WebLooper:
             # Calculate new length
             new_length = end_sample - start_sample
             
-            # Create new trimmed buffer
+            # Create new trimmed buffer (no modification - crossfade handled at playback)
             old_buffer = self.layers[0].buffer
             new_buffer = old_buffer[start_sample:end_sample].copy()
-            
-            # Apply short fade in/out to avoid clicks
-            fade_samples = min(int(0.005 * SAMPLE_RATE), new_length // 4)  # 5ms fade
-            if fade_samples > 0:
-                fade_in = np.linspace(0.0, 1.0, fade_samples)
-                fade_out = np.linspace(1.0, 0.0, fade_samples)
-                new_buffer[:fade_samples] *= fade_in
-                new_buffer[-fade_samples:] *= fade_out
             
             # Update master layer
             self.layers[0] = LoopLayer(0, "Master", new_buffer)
@@ -499,6 +523,107 @@ class WebLooper:
             return (len(self.layers) == 1 and 
                     self.state in (LooperState.PLAYING,) and
                     self.master_length > 0)
+    
+    def detect_tempo(self) -> dict:
+        """
+        Detect tempo from the master loop using librosa.
+        Returns dict with bpm, confidence, and beats array.
+        """
+        if not LIBROSA_AVAILABLE:
+            return {
+                'success': False,
+                'error': 'librosa not installed',
+                'bpm': 0,
+                'confidence': 0
+            }
+        
+        # Quick copy of audio data while holding lock
+        with self.lock:
+            if len(self.layers) == 0 or self.master_length == 0:
+                return {
+                    'success': False,
+                    'error': 'No audio recorded',
+                    'bpm': 0,
+                    'confidence': 0
+                }
+            
+            audio = self.layers[0].buffer[:self.master_length].copy()
+        
+        # Process WITHOUT lock (this takes time)
+        try:
+            # Convert to float64 for librosa
+            audio_64 = audio.astype(np.float64)
+            
+            # Detect tempo using librosa's beat tracker
+            # This returns tempo estimate and beat frames
+            tempo, beat_frames = librosa.beat.beat_track(
+                y=audio_64, 
+                sr=SAMPLE_RATE,
+                start_bpm=120,  # Initial guess
+                units='frames'
+            )
+            
+            # Handle both old and new librosa versions
+            # New versions return an array, old versions return a scalar
+            if hasattr(tempo, '__len__'):
+                bpm = float(tempo[0]) if len(tempo) > 0 else 0
+            else:
+                bpm = float(tempo)
+            
+            # Calculate confidence based on beat regularity
+            if len(beat_frames) >= 2:
+                # Convert frames to times
+                beat_times = librosa.frames_to_time(beat_frames, sr=SAMPLE_RATE)
+                
+                # Calculate intervals between beats
+                intervals = np.diff(beat_times)
+                
+                if len(intervals) > 0:
+                    # Confidence = how regular the intervals are (low std = high confidence)
+                    mean_interval = np.mean(intervals)
+                    std_interval = np.std(intervals)
+                    
+                    # Coefficient of variation (lower = more regular)
+                    if mean_interval > 0:
+                        cv = std_interval / mean_interval
+                        # Convert to confidence percentage (cv of 0 = 100%, cv of 0.5 = 0%)
+                        confidence = max(0, min(100, (1 - cv * 2) * 100))
+                    else:
+                        confidence = 0
+                else:
+                    confidence = 50  # Not enough data
+            else:
+                confidence = 30  # Very few beats detected
+            
+            # Round BPM to nearest integer
+            bpm = round(bpm)
+            
+            # Sanity check
+            if bpm < 30 or bpm > 300:
+                return {
+                    'success': False,
+                    'error': f'Detected tempo ({bpm}) out of range',
+                    'bpm': 0,
+                    'confidence': 0
+                }
+            
+            print(f"✓ Tempo detected: {bpm} BPM (confidence: {confidence:.0f}%)")
+            
+            return {
+                'success': True,
+                'bpm': bpm,
+                'confidence': round(confidence),
+                'beat_count': len(beat_frames)
+            }
+            
+        except Exception as e:
+            print(f"✗ Tempo detection failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'bpm': 0,
+                'confidence': 0
+            }
     
     # -------------------------------------------------------------------------
     # STATE QUERY
@@ -811,6 +936,128 @@ HTML_TEMPLATE = """
             0% { transform: scale(1); }
             50% { transform: scale(0.95); background: #4c51bf; }
             100% { transform: scale(1); }
+        }
+        
+        .detect-tempo-btn {
+            background: #38a169;
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 0.9em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-transform: uppercase;
+        }
+        
+        .detect-tempo-btn:hover:not(:disabled) {
+            background: #2f855a;
+            transform: scale(1.02);
+        }
+        
+        .detect-tempo-btn:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+        
+        .detect-tempo-btn:disabled {
+            background: #4a5568;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        .detect-tempo-btn.detecting {
+            animation: pulse 1s infinite;
+        }
+        
+        .tempo-detect-result {
+            background: #1a202c;
+            border-radius: 10px;
+            padding: 12px 15px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .tempo-detect-result.visible {
+            display: block;
+        }
+        
+        .tempo-detect-result.success {
+            border-left: 4px solid #38a169;
+        }
+        
+        .tempo-detect-result.error {
+            border-left: 4px solid #e53e3e;
+        }
+        
+        .detect-result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .detect-result-bpm {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #38a169;
+        }
+        
+        .detect-result-confidence {
+            font-size: 0.85em;
+            color: #a0aec0;
+        }
+        
+        .confidence-bar {
+            height: 4px;
+            background: #2d3748;
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #e53e3e 0%, #d69e2e 50%, #38a169 100%);
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+        
+        .detect-result-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .btn-apply-tempo {
+            background: #38a169;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        
+        .btn-apply-tempo:hover {
+            background: #2f855a;
+        }
+        
+        .btn-dismiss {
+            background: transparent;
+            color: #718096;
+            border: 1px solid #4a5568;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        
+        .btn-dismiss:hover {
+            background: #2d3748;
         }
         
         .tempo-options {
@@ -1430,6 +1677,10 @@ HTML_TEMPLATE = """
                     TAP<br>TEMPO
                 </button>
                 
+                <button class="detect-tempo-btn" id="detectTempoBtn" onclick="detectTempo()" disabled>
+                    🔍 DETECT<br>TEMPO
+                </button>
+                
                 <div class="tempo-options">
                     <div class="tempo-option">
                         <label>BPM:</label>
@@ -1454,6 +1705,21 @@ HTML_TEMPLATE = """
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Tempo Detection Result -->
+            <div class="tempo-detect-result" id="tempoDetectResult">
+                <div class="detect-result-header">
+                    <span class="detect-result-bpm" id="detectedBpm">-- BPM</span>
+                    <span class="detect-result-confidence" id="detectedConfidence">Confidence: --%</span>
+                </div>
+                <div class="confidence-bar">
+                    <div class="confidence-fill" id="confidenceFill" style="width: 0%"></div>
+                </div>
+                <div class="detect-result-actions">
+                    <button class="btn-apply-tempo" onclick="applyDetectedTempo()">✓ Apply</button>
+                    <button class="btn-dismiss" onclick="dismissDetection()">Dismiss</button>
                 </div>
             </div>
         </div>
@@ -1531,7 +1797,7 @@ HTML_TEMPLATE = """
         </div>
         
         <div class="keyboard-hint">
-            <kbd>SPACE</kbd> Record / Stop / Overdub &nbsp;|&nbsp; <kbd>T</kbd> Tap tempo
+            <kbd>SPACE</kbd> Record / Stop / Overdub &nbsp;|&nbsp; <kbd>T</kbd> Tap tempo &nbsp;|&nbsp; <kbd>D</kbd> Detect tempo
         </div>
         
         <div class="controls">
@@ -1702,6 +1968,75 @@ HTML_TEMPLATE = """
         }
         
         // =================================================================
+        // TEMPO DETECTION
+        // =================================================================
+        
+        let detectedTempoValue = 0;
+        let isDetecting = false;
+        
+        function detectTempo() {
+            if (isDetecting) return;
+            if (serverState.state !== 'playing') {
+                alert('Record a loop first before detecting tempo');
+                return;
+            }
+            
+            isDetecting = true;
+            const btn = document.getElementById('detectTempoBtn');
+            btn.classList.add('detecting');
+            btn.innerHTML = '🔍 DETECTING...';
+            
+            // Hide previous result
+            document.getElementById('tempoDetectResult').classList.remove('visible', 'success', 'error');
+            
+            // Request tempo detection from server
+            socket.emit('detect_tempo');
+        }
+        
+        function handleTempoDetected(result) {
+            isDetecting = false;
+            const btn = document.getElementById('detectTempoBtn');
+            btn.classList.remove('detecting');
+            btn.innerHTML = '🔍 DETECT<br>TEMPO';
+            
+            const resultDiv = document.getElementById('tempoDetectResult');
+            
+            if (result.success) {
+                detectedTempoValue = result.bpm;
+                
+                document.getElementById('detectedBpm').textContent = `${result.bpm} BPM`;
+                document.getElementById('detectedConfidence').textContent = `Confidence: ${result.confidence}%`;
+                document.getElementById('confidenceFill').style.width = `${result.confidence}%`;
+                
+                resultDiv.classList.remove('error');
+                resultDiv.classList.add('visible', 'success');
+            } else {
+                document.getElementById('detectedBpm').textContent = 'Detection failed';
+                document.getElementById('detectedConfidence').textContent = result.error || 'Unknown error';
+                document.getElementById('confidenceFill').style.width = '0%';
+                
+                resultDiv.classList.remove('success');
+                resultDiv.classList.add('visible', 'error');
+            }
+        }
+        
+        function applyDetectedTempo() {
+            if (detectedTempoValue > 0) {
+                localBpm = detectedTempoValue;
+                document.getElementById('bpmValue').textContent = localBpm;
+                document.getElementById('bpmInput').value = localBpm;
+                sendCommand('set_bpm', { bpm: localBpm });
+                
+                // Hide the result after applying
+                dismissDetection();
+            }
+        }
+        
+        function dismissDetection() {
+            document.getElementById('tempoDetectResult').classList.remove('visible', 'success', 'error');
+        }
+        
+        // =================================================================
         // SOCKET CONNECTION
         // =================================================================
         
@@ -1737,6 +2072,11 @@ HTML_TEMPLATE = """
                 renderWaveform();
                 renderBeatMarkersOnWaveform();
                 updateTrimUI();
+            });
+            
+            // Handle tempo detection result
+            socket.on('tempo_detected', (result) => {
+                handleTempoDetected(result);
             });
         }
         
@@ -1857,6 +2197,15 @@ HTML_TEMPLATE = """
             if (e.code === 'KeyT' && !e.repeat) {
                 e.preventDefault();
                 handleTap();
+                return;
+            }
+            
+            // DETECT TEMPO: D key
+            if (e.code === 'KeyD' && !e.repeat) {
+                e.preventDefault();
+                if (serverState.state === 'playing' && !isDetecting) {
+                    detectTempo();
+                }
                 return;
             }
             
@@ -2292,6 +2641,12 @@ HTML_TEMPLATE = """
                 btnOverdub.disabled = true;
             }
             
+            // DETECT TEMPO button - only enabled when playing
+            const btnDetect = document.getElementById('detectTempoBtn');
+            if (btnDetect) {
+                btnDetect.disabled = (state !== 'playing' || isDetecting);
+            }
+            
             // --- Layers List ---
             const layersList = document.getElementById('layersList');
             
@@ -2435,6 +2790,14 @@ def handle_get_waveform():
         emit('waveform', {'data': waveform})
 
 
+@socketio.on('detect_tempo')
+def handle_detect_tempo():
+    """Detect tempo from recorded loop and send result to client."""
+    if looper:
+        result = looper.detect_tempo()
+        emit('tempo_detected', result)
+
+
 @socketio.on('command')
 def handle_command(data):
     """Handle commands from web client."""
@@ -2566,5 +2929,10 @@ if __name__ == "__main__":
         ])
         print("\n✓ Dependencies installed. Please restart the script.\n")
         exit(0)
+    
+    # Check optional dependencies
+    if not LIBROSA_AVAILABLE:
+        print("\n💡 Tip: Install librosa for tempo detection:")
+        print("   pip install librosa\n")
     
     main()
