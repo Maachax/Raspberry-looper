@@ -8,6 +8,7 @@ Features:
     - Metronome during countdown
     - Quantized loop length
     - Visual beat grid
+    - MP3/WAV Export
 
 State Machine:
     IDLE → RECORDING_MASTER → PLAYING ⇄ OVERDUB_ARMED → RECORDING_OVERDUB → PLAYING
@@ -18,7 +19,10 @@ import numpy as np
 import threading
 import time
 from enum import Enum
-from flask import Flask, render_template_string, request
+from io import BytesIO
+from datetime import datetime
+from zipfile import ZipFile
+from flask import Flask, render_template_string, request, Response, send_file
 from flask_socketio import SocketIO, emit
 
 # Optional: librosa for tempo detection
@@ -30,6 +34,22 @@ except ImportError:
     print("⚠ librosa not installed - tempo detection disabled")
     print("  Install with: pip install librosa")
 
+# Optional: pydub for audio export
+try:
+    from pydub import AudioSegment
+    from pydub.utils import which
+    PYDUB_AVAILABLE = True
+    FFMPEG_AVAILABLE = which("ffmpeg") is not None
+    if not FFMPEG_AVAILABLE:
+        print("⚠ ffmpeg not found - MP3 export disabled")
+        print("  Install with: sudo apt install ffmpeg (Linux)")
+        print("              or: brew install ffmpeg (macOS)")
+except ImportError:
+    PYDUB_AVAILABLE = False
+    FFMPEG_AVAILABLE = False
+    print("⚠ pydub not installed - audio export disabled")
+    print("  Install with: pip install pydub")
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -38,6 +58,10 @@ SAMPLE_RATE = 44100
 BLOCKSIZE = 256
 CHANNELS = 1
 MAX_LOOP_SECONDS = 120
+
+# Export settings
+EXPORT_MP3_BITRATE = "192k"
+EXPORT_WAV_SAMPLE_WIDTH = 2  # 16-bit
 
 # =============================================================================
 # STATE MACHINE
@@ -116,6 +140,9 @@ class WebLooper:
         self.beats_per_bar = 4          # Time signature (beats per bar)
         self.quantize_enabled = True    # Auto-snap to nearest bar
         
+        # Master volume (0.0 to 1.0)
+        self.master_volume = 0.8        # Default 80% - leaves headroom
+        
         # Thread safety
         self.lock = threading.Lock()
         
@@ -178,7 +205,9 @@ class WebLooper:
                         # Crossfade samples for smooth loop transition
                         xfade_samples = min(int(0.008 * SAMPLE_RATE), self.master_length // 8)  # 8ms
                         
-                        # Mix all layers at current position
+                        # Mix all layers at current position into separate buffer
+                        loop_output = np.zeros(frames, dtype=np.float32)
+                        
                         for layer in self.layers:
                             if layer.is_playing and layer.length > 0:
                                 for i in range(frames):
@@ -198,7 +227,10 @@ class WebLooper:
                                                 fade = (layer.length - pos) / xfade_samples
                                                 sample *= fade
                                         
-                                        output[i] += sample
+                                        loop_output[i] += sample
+                        
+                        # Apply master volume to loop output and add to pass-through
+                        output += loop_output * self.master_volume
                         
                         # Check for loop restart (position wrapping)
                         old_position = self.master_position
@@ -363,6 +395,13 @@ class WebLooper:
                 self.layers[layer_id].volume = max(0.0, min(1.0, volume))
                 return True
             return False
+    
+    def set_master_volume(self, volume: float) -> bool:
+        """Set master output volume (0.0 to 1.0). Returns success."""
+        with self.lock:
+            self.master_volume = max(0.0, min(1.0, volume))
+            print(f"✓ Master volume: {int(self.master_volume * 100)}%")
+            return True
     
     def toggle_layer(self, layer_id: int) -> bool:
         """Toggle play/pause for a layer. Returns success."""
@@ -626,6 +665,311 @@ class WebLooper:
             }
     
     # -------------------------------------------------------------------------
+    # EXPORT FUNCTIONS
+    # -------------------------------------------------------------------------
+    
+    def _generate_filename(self, suffix: str, fmt: str) -> str:
+        """
+        Generate filename with timestamp.
+        Format: Loop_YYYY-MM-DD_HH-MM_{suffix}.{format}
+        """
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        return f"Loop_{timestamp}_{suffix}.{fmt}"
+    
+    def _normalize(self, samples: np.ndarray, target_db: float = -1.0) -> np.ndarray:
+        """
+        Normalize audio to target peak level.
+        
+        Args:
+            samples: Audio samples (float32, -1 to 1)
+            target_db: Target peak level in dB (default -1dB)
+        
+        Returns:
+            Normalized samples
+        """
+        peak = np.abs(samples).max()
+        if peak == 0:
+            return samples
+        
+        # Convert dB to linear: -1dB ≈ 0.891
+        target_linear = 10 ** (target_db / 20)
+        
+        # Only attenuate if peak exceeds target (don't amplify quiet signals)
+        if peak > target_linear:
+            return samples * (target_linear / peak)
+        
+        return samples
+    
+    def _numpy_to_audiosegment(self, samples: np.ndarray) -> 'AudioSegment':
+        """
+        Convert numpy float32 array to pydub AudioSegment.
+        
+        Args:
+            samples: Audio samples (float32, -1 to 1)
+        
+        Returns:
+            pydub AudioSegment
+        """
+        # Normalize to prevent clipping
+        normalized = self._normalize(samples)
+        
+        # Convert float32 [-1, 1] → int16 [-32768, 32767]
+        int16_samples = (normalized * 32767).astype(np.int16)
+        
+        # Create AudioSegment from raw bytes
+        audio_segment = AudioSegment(
+            data=int16_samples.tobytes(),
+            sample_width=2,  # 16-bit = 2 bytes
+            frame_rate=SAMPLE_RATE,
+            channels=CHANNELS
+        )
+        
+        return audio_segment
+    
+    def get_export_info(self) -> dict:
+        """
+        Get export availability and estimated file sizes.
+        """
+        with self.lock:
+            can_export = (len(self.layers) > 0 and 
+                         self.master_length > 0 and
+                         self.state not in (LooperState.RECORDING_MASTER, 
+                                           LooperState.RECORDING_OVERDUB))
+            
+            duration = self.master_length / SAMPLE_RATE if self.master_length > 0 else 0
+            num_layers = len(self.layers)
+        
+        # Estimate file sizes
+        # MP3: ~192kbps = 24KB/sec
+        # WAV: 44100 * 2 bytes * 1 channel = 88.2KB/sec
+        mp3_size = int(duration * 24000) if duration > 0 else 0
+        wav_size = int(duration * 88200) if duration > 0 else 0
+        
+        return {
+            'can_export': can_export,
+            'pydub_available': PYDUB_AVAILABLE,
+            'ffmpeg_available': FFMPEG_AVAILABLE,
+            'duration': duration,
+            'num_layers': num_layers,
+            'estimates': {
+                'mp3_mixed': mp3_size,
+                'wav_mixed': wav_size,
+                'mp3_layers_zip': mp3_size * num_layers,
+                'wav_layers_zip': wav_size * num_layers,
+            }
+        }
+    
+    def export_mixed(self, fmt: str = "mp3") -> tuple:
+        """
+        Export all layers mixed together, respecting volume settings.
+        
+        Args:
+            fmt: "mp3" or "wav"
+        
+        Returns:
+            (audio_bytes, filename, content_type) or (None, error_message, None)
+        """
+        if not PYDUB_AVAILABLE:
+            return (None, "pydub not installed", None)
+        
+        if fmt == "mp3" and not FFMPEG_AVAILABLE:
+            return (None, "ffmpeg not installed (required for MP3)", None)
+        
+        # Copy layer data while holding lock
+        with self.lock:
+            if len(self.layers) == 0 or self.master_length == 0:
+                return (None, "No audio recorded", None)
+            
+            if self.state in (LooperState.RECORDING_MASTER, LooperState.RECORDING_OVERDUB):
+                return (None, "Cannot export while recording", None)
+            
+            # Copy all layer buffers and volumes
+            layer_data = []
+            for layer in self.layers:
+                layer_data.append({
+                    'buffer': layer.buffer[:self.master_length].copy(),
+                    'volume': layer.volume,
+                    'is_playing': layer.is_playing
+                })
+            master_length = self.master_length
+            master_vol = self.master_volume
+        
+        # Process WITHOUT lock
+        try:
+            # Mix all layers
+            mixed = np.zeros(master_length, dtype=np.float32)
+            for layer in layer_data:
+                if layer['is_playing']:
+                    mixed += layer['buffer'] * layer['volume']
+            
+            # Apply master volume
+            mixed *= master_vol
+            
+            # Convert to AudioSegment
+            audio_segment = self._numpy_to_audiosegment(mixed)
+            
+            # Add metadata
+            audio_segment = audio_segment.set_frame_rate(SAMPLE_RATE)
+            
+            # Export to bytes
+            buffer = BytesIO()
+            
+            if fmt == "mp3":
+                audio_segment.export(
+                    buffer, 
+                    format="mp3",
+                    bitrate=EXPORT_MP3_BITRATE,
+                    tags={'title': self._generate_filename('mixed', 'mp3').replace('.mp3', '')}
+                )
+                content_type = "audio/mpeg"
+            else:  # wav
+                audio_segment.export(buffer, format="wav")
+                content_type = "audio/wav"
+            
+            buffer.seek(0)
+            filename = self._generate_filename("mixed", fmt)
+            
+            print(f"✓ Exported mixed: {filename} ({len(buffer.getvalue())} bytes)")
+            
+            return (buffer.getvalue(), filename, content_type)
+            
+        except Exception as e:
+            print(f"✗ Export failed: {e}")
+            return (None, str(e), None)
+    
+    def export_layer(self, layer_id: int, fmt: str = "mp3") -> tuple:
+        """
+        Export a single layer with its volume applied.
+        
+        Args:
+            layer_id: Index of layer to export
+            fmt: "mp3" or "wav"
+        
+        Returns:
+            (audio_bytes, filename, content_type) or (None, error_message, None)
+        """
+        if not PYDUB_AVAILABLE:
+            return (None, "pydub not installed", None)
+        
+        if fmt == "mp3" and not FFMPEG_AVAILABLE:
+            return (None, "ffmpeg not installed (required for MP3)", None)
+        
+        # Copy layer data while holding lock
+        with self.lock:
+            if layer_id < 0 or layer_id >= len(self.layers):
+                return (None, f"Invalid layer ID: {layer_id}", None)
+            
+            if self.state in (LooperState.RECORDING_MASTER, LooperState.RECORDING_OVERDUB):
+                return (None, "Cannot export while recording", None)
+            
+            layer = self.layers[layer_id]
+            buffer = layer.buffer[:layer.length].copy()
+            volume = layer.volume
+            name = layer.name.replace(" ", "_").lower()
+        
+        # Process WITHOUT lock
+        try:
+            # Apply volume
+            samples = buffer * volume
+            
+            # Convert to AudioSegment
+            audio_segment = self._numpy_to_audiosegment(samples)
+            
+            # Export to bytes
+            output_buffer = BytesIO()
+            
+            if fmt == "mp3":
+                audio_segment.export(
+                    output_buffer, 
+                    format="mp3",
+                    bitrate=EXPORT_MP3_BITRATE
+                )
+                content_type = "audio/mpeg"
+            else:  # wav
+                audio_segment.export(output_buffer, format="wav")
+                content_type = "audio/wav"
+            
+            output_buffer.seek(0)
+            filename = self._generate_filename(name, fmt)
+            
+            print(f"✓ Exported layer {layer_id}: {filename}")
+            
+            return (output_buffer.getvalue(), filename, content_type)
+            
+        except Exception as e:
+            print(f"✗ Export layer failed: {e}")
+            return (None, str(e), None)
+    
+    def export_all_layers(self, fmt: str = "mp3") -> tuple:
+        """
+        Export all layers as separate files in a ZIP archive.
+        
+        Args:
+            fmt: "mp3" or "wav"
+        
+        Returns:
+            (zip_bytes, filename, content_type) or (None, error_message, None)
+        """
+        if not PYDUB_AVAILABLE:
+            return (None, "pydub not installed", None)
+        
+        if fmt == "mp3" and not FFMPEG_AVAILABLE:
+            return (None, "ffmpeg not installed (required for MP3)", None)
+        
+        # Copy layer data while holding lock
+        with self.lock:
+            if len(self.layers) == 0:
+                return (None, "No audio recorded", None)
+            
+            if self.state in (LooperState.RECORDING_MASTER, LooperState.RECORDING_OVERDUB):
+                return (None, "Cannot export while recording", None)
+            
+            # Copy all layer data
+            layer_data = []
+            for layer in self.layers:
+                layer_data.append({
+                    'id': layer.id,
+                    'name': layer.name,
+                    'buffer': layer.buffer[:layer.length].copy(),
+                    'volume': layer.volume
+                })
+        
+        # Process WITHOUT lock
+        try:
+            # Create ZIP file in memory
+            zip_buffer = BytesIO()
+            
+            with ZipFile(zip_buffer, 'w') as zip_file:
+                for layer in layer_data:
+                    # Apply volume
+                    samples = layer['buffer'] * layer['volume']
+                    
+                    # Convert to AudioSegment
+                    audio_segment = self._numpy_to_audiosegment(samples)
+                    
+                    # Export to bytes
+                    audio_buffer = BytesIO()
+                    if fmt == "mp3":
+                        audio_segment.export(audio_buffer, format="mp3", bitrate=EXPORT_MP3_BITRATE)
+                    else:
+                        audio_segment.export(audio_buffer, format="wav")
+                    
+                    # Add to ZIP
+                    layer_name = layer['name'].replace(" ", "_").lower()
+                    zip_file.writestr(f"{layer_name}.{fmt}", audio_buffer.getvalue())
+            
+            zip_buffer.seek(0)
+            filename = self._generate_filename("layers", "zip")
+            
+            print(f"✓ Exported {len(layer_data)} layers to {filename}")
+            
+            return (zip_buffer.getvalue(), filename, "application/zip")
+            
+        except Exception as e:
+            print(f"✗ Export layers failed: {e}")
+            return (None, str(e), None)
+    
+    # -------------------------------------------------------------------------
     # STATE QUERY
     # -------------------------------------------------------------------------
     
@@ -641,6 +985,7 @@ class WebLooper:
             bpm = self.bpm
             beats_per_bar = self.beats_per_bar
             quantize_enabled = self.quantize_enabled
+            master_volume = self.master_volume
             callback_time = self.callback_time
             dropout_count = self.dropout_count
             layers_data = [layer.to_dict() for layer in self.layers]
@@ -677,9 +1022,16 @@ class WebLooper:
                    current_state == LooperState.PLAYING and
                    master_length > 0)
         
+        # Check if export is available
+        can_export = (num_layers > 0 and 
+                     master_length > 0 and
+                     current_state not in (LooperState.RECORDING_MASTER, 
+                                          LooperState.RECORDING_OVERDUB))
+        
         return {
             'state': state,
             'master_duration': master_duration,
+            'master_volume': master_volume,
             'position_ratio': position_ratio,
             'current_time': current_time,
             'recording_time': recording_position / SAMPLE_RATE if current_state == LooperState.RECORDING_MASTER else 0,
@@ -693,6 +1045,11 @@ class WebLooper:
             'trim': {
                 'can_trim': can_trim,
                 'reason': '' if can_trim else ('Add overdubs disabled trimming' if num_layers > 1 else ''),
+            },
+            'export': {
+                'can_export': can_export,
+                'pydub_available': PYDUB_AVAILABLE,
+                'ffmpeg_available': FFMPEG_AVAILABLE,
             },
             'stats': {
                 'callback_time_ms': callback_time * 1000,
@@ -1134,6 +1491,63 @@ HTML_TEMPLATE = """
         
         .toggle-switch input:checked + .toggle-slider:before {
             transform: translateX(24px);
+        }
+        
+        /* Master Volume Section */
+        .master-volume-section {
+            background: #2d3748;
+            border-radius: 15px;
+            padding: 15px 25px;
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .master-volume-label {
+            color: #a0aec0;
+            font-weight: bold;
+            font-size: 1em;
+            white-space: nowrap;
+        }
+        
+        .master-volume-slider-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .master-volume-slider {
+            flex: 1;
+            height: 8px;
+            border-radius: 4px;
+            background: #1a202c;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+        
+        .master-volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        
+        .master-volume-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+        
+        .master-volume-value {
+            min-width: 55px;
+            text-align: right;
+            color: #fff;
+            font-weight: bold;
+            font-size: 1.1em;
+            font-family: "SF Mono", Monaco, monospace;
         }
         
         /* Progress Section */
@@ -1637,6 +2051,111 @@ HTML_TEMPLATE = """
             color: #a0aec0;
             font-size: 0.9em;
         }
+        
+        /* Export Section */
+        .export-section {
+            background: #2d3748;
+            border-radius: 15px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        
+        .export-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+        }
+        
+        .export-title {
+            font-size: 1em;
+            color: #a0aec0;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .export-disabled-badge {
+            font-size: 0.8em;
+            color: #718096;
+            background: #1a202c;
+            padding: 4px 10px;
+            border-radius: 10px;
+        }
+        
+        .export-header-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .export-format-select {
+            background: #1a202c;
+            border: 1px solid #4a5568;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            cursor: pointer;
+        }
+        
+        .export-mode-select {
+            background: #1a202c;
+            border: 1px solid #4a5568;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            cursor: pointer;
+        }
+        
+        .btn-export {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 25px;
+            font-size: 1em;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-export:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-export:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #4a5568;
+        }
+        
+        .btn-export.loading {
+            pointer-events: none;
+        }
+        
+        .export-warning {
+            background: rgba(214, 158, 46, 0.2);
+            border-left: 4px solid #d69e2e;
+            padding: 10px 15px;
+            margin: 0 20px 15px 20px;
+            border-radius: 0 8px 8px 0;
+            font-size: 0.85em;
+            color: #d69e2e;
+        }
+        
+        .export-info {
+            padding: 10px 20px 15px 20px;
+            color: #718096;
+            font-size: 0.85em;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -1724,6 +2243,19 @@ HTML_TEMPLATE = """
             </div>
         </div>
         
+        <!-- Master Volume Section -->
+        <div class="master-volume-section">
+            <span class="master-volume-label">🔊 Master Volume</span>
+            <div class="master-volume-slider-container">
+                <input type="range" 
+                       class="master-volume-slider" 
+                       id="masterVolumeSlider"
+                       min="0" max="1" step="0.01" value="0.8"
+                       oninput="setMasterVolume(this.value)">
+                <span class="master-volume-value" id="masterVolumeValue">80%</span>
+            </div>
+        </div>
+        
         <!-- Progress Section -->
         <div class="progress-section">
             <div class="time-display" id="timeDisplay">
@@ -1796,6 +2328,36 @@ HTML_TEMPLATE = """
             </div>
         </div>
         
+        <!-- Export Section -->
+        <div class="export-section" id="exportSection">
+            <div class="export-header">
+                <span class="export-title">
+                    <span>📥 Export</span>
+                    <span class="export-disabled-badge" id="exportDisabledBadge" style="display: none;">
+                        Record a loop first
+                    </span>
+                </span>
+                <div class="export-header-controls">
+                    <select class="export-mode-select" id="exportModeSelect" onchange="updateExportPreview()">
+                        <option value="mixed">🎵 Mixed</option>
+                        <option value="separate">📦 Layers (ZIP)</option>
+                    </select>
+                    <select class="export-format-select" id="exportFormatSelect" onchange="updateExportPreview()">
+                        <option value="mp3">MP3</option>
+                        <option value="wav">WAV</option>
+                    </select>
+                    <button class="btn-export" id="exportBtn" onclick="downloadExport()" disabled>
+                        <span id="exportBtnText">⬇️ DOWNLOAD</span>
+                    </button>
+                </div>
+            </div>
+            <!-- Warning if ffmpeg not available -->
+            <div class="export-warning" id="exportWarning" style="display: none;">
+                ⚠️ ffmpeg not installed - MP3 export unavailable. WAV export still works.
+            </div>
+            <div class="export-info" id="exportInfo">Duration: 0.0s | Est. size: ~0 KB</div>
+        </div>
+        
         <div class="keyboard-hint">
             <kbd>SPACE</kbd> Record / Stop / Overdub &nbsp;|&nbsp; <kbd>T</kbd> Tap tempo &nbsp;|&nbsp; <kbd>D</kbd> Detect tempo
         </div>
@@ -1829,6 +2391,7 @@ HTML_TEMPLATE = """
         let serverState = {
             state: 'idle',
             master_duration: 0,
+            master_volume: 0.8,
             position_ratio: 0,
             current_time: 0,
             recording_time: 0,
@@ -1842,6 +2405,11 @@ HTML_TEMPLATE = """
             trim: {
                 can_trim: false,
                 reason: ''
+            },
+            export: {
+                can_export: false,
+                pydub_available: false,
+                ffmpeg_available: false
             }
         };
         
@@ -1857,6 +2425,9 @@ HTML_TEMPLATE = """
         let originalDuration = 0;
         let isDragging = null;  // 'start', 'end', or null
         let trimEditorExpanded = false;
+        
+        // Export state
+        let exportSectionExpanded = false;
         
         // =================================================================
         // WEB AUDIO - METRONOME
@@ -2180,6 +2751,12 @@ HTML_TEMPLATE = """
         
         function setVolume(layerId, volume) {
             sendCommand('set_volume', { layer_id: layerId, volume: parseFloat(volume) });
+        }
+        
+        function setMasterVolume(volume) {
+            const vol = parseFloat(volume);
+            document.getElementById('masterVolumeValue').textContent = `${Math.round(vol * 100)}%`;
+            sendCommand('set_master_volume', { volume: vol });
         }
         
         function deleteLayer(layerId) {
@@ -2516,6 +3093,168 @@ HTML_TEMPLATE = """
         document.addEventListener('DOMContentLoaded', initTrimEditor);
         
         // =================================================================
+        // EXPORT
+        // =================================================================
+        
+        function getExportMode() {
+            return document.getElementById('exportModeSelect')?.value || 'mixed';
+        }
+        
+        function getExportFormat() {
+            return document.getElementById('exportFormatSelect')?.value || 'mp3';
+        }
+        
+        function updateExportPreview() {
+            const mode = getExportMode();
+            const format = getExportFormat();
+            const duration = serverState.master_duration || 0;
+            const numLayers = serverState.layers?.length || 0;
+            
+            let estSize;
+            if (mode === 'mixed') {
+                if (format === 'mp3') {
+                    estSize = Math.round(duration * 24); // ~24KB/sec at 192kbps
+                } else {
+                    estSize = Math.round(duration * 88.2); // ~88.2KB/sec for 16-bit WAV
+                }
+            } else {
+                if (format === 'mp3') {
+                    estSize = Math.round(duration * 24 * numLayers);
+                } else {
+                    estSize = Math.round(duration * 88.2 * numLayers);
+                }
+            }
+            
+            // Format size
+            let sizeStr;
+            if (estSize < 1024) {
+                sizeStr = `${estSize} KB`;
+            } else {
+                sizeStr = `${(estSize / 1024).toFixed(1)} MB`;
+            }
+            
+            const modeStr = mode === 'mixed' ? 'mixed' : `${numLayers} layers`;
+            document.getElementById('exportInfo').textContent = 
+                `Duration: ${duration.toFixed(1)}s | ${modeStr} | Est. size: ~${sizeStr}`;
+        }
+        
+        async function downloadExport() {
+            const btn = document.getElementById('exportBtn');
+            const btnText = document.getElementById('exportBtnText');
+            
+            if (btn.disabled) return;
+            
+            const mode = getExportMode();
+            const format = getExportFormat();
+            
+            // Check if MP3 is available
+            if (format === 'mp3' && !serverState.export?.ffmpeg_available) {
+                alert('MP3 export is not available. Please install ffmpeg or use WAV format.');
+                return;
+            }
+            
+            // Show loading state
+            btn.disabled = true;
+            btn.classList.add('loading');
+            btnText.textContent = '⏳ Exporting...';
+            
+            try {
+                let url;
+                if (mode === 'mixed') {
+                    url = `/export/mixed/${format}`;
+                } else {
+                    url = `/export/all-layers/${format}`;
+                }
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || `Export failed: ${response.statusText}`);
+                }
+                
+                // Get filename from Content-Disposition header
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'export';
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename="?([^"]+)"?/);
+                    if (match) {
+                        filename = match[1];
+                    }
+                }
+                
+                // Download the file
+                const blob = await response.blob();
+                const downloadUrl = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                URL.revokeObjectURL(downloadUrl);
+                
+                console.log(`✓ Downloaded: ${filename}`);
+                
+            } catch (error) {
+                console.error('Export failed:', error);
+                alert(`Export failed: ${error.message}`);
+            } finally {
+                // Reset button state
+                btn.disabled = false;
+                btn.classList.remove('loading');
+                btnText.textContent = '⬇️ DOWNLOAD';
+                updateExportUI();
+            }
+        }
+        
+        function updateExportUI() {
+            const badge = document.getElementById('exportDisabledBadge');
+            const btn = document.getElementById('exportBtn');
+            const warning = document.getElementById('exportWarning');
+            const formatSelect = document.getElementById('exportFormatSelect');
+            
+            const canExport = serverState.export?.can_export;
+            const pydubAvailable = serverState.export?.pydub_available;
+            const ffmpegAvailable = serverState.export?.ffmpeg_available;
+            
+            // Show/hide warning and handle MP3 availability
+            if (pydubAvailable && !ffmpegAvailable) {
+                warning.style.display = 'block';
+                // Disable MP3 option
+                const mp3Option = formatSelect.querySelector('option[value="mp3"]');
+                if (mp3Option) mp3Option.disabled = true;
+                // Switch to WAV if MP3 was selected
+                if (getExportFormat() === 'mp3') {
+                    formatSelect.value = 'wav';
+                }
+            } else {
+                warning.style.display = 'none';
+                const mp3Option = formatSelect.querySelector('option[value="mp3"]');
+                if (mp3Option) mp3Option.disabled = false;
+            }
+            
+            // Update badge
+            if (!pydubAvailable) {
+                badge.style.display = 'inline';
+                badge.textContent = 'pydub not installed';
+            } else if (!canExport) {
+                badge.style.display = 'inline';
+                badge.textContent = serverState.state === 'idle' ? 'Record a loop first' : 'Cannot export while recording';
+            } else {
+                badge.style.display = 'none';
+            }
+            
+            // Update button
+            btn.disabled = !canExport || !pydubAvailable;
+            
+            // Update preview
+            updateExportPreview();
+        }
+        
+        // =================================================================
         // UI UPDATE
         // =================================================================
         
@@ -2577,6 +3316,17 @@ HTML_TEMPLATE = """
                     document.getElementById('bpmInput').value = Math.round(localBpm);
                 }
                 document.getElementById('quantizeToggle').checked = serverState.tempo.quantize_enabled;
+            }
+            
+            // --- Master Volume (sync from server) ---
+            const masterVolumeSlider = document.getElementById('masterVolumeSlider');
+            const masterVolumeValue = document.getElementById('masterVolumeValue');
+            if (serverState.master_volume !== undefined) {
+                // Only update if not currently being dragged
+                if (document.activeElement !== masterVolumeSlider) {
+                    masterVolumeSlider.value = serverState.master_volume;
+                    masterVolumeValue.textContent = `${Math.round(serverState.master_volume * 100)}%`;
+                }
             }
             
             // --- Time Display ---
@@ -2735,6 +3485,9 @@ HTML_TEMPLATE = """
             if (trimEditorExpanded && serverState.master_duration > 0) {
                 updateWaveformPlayhead();
             }
+            
+            // --- Export ---
+            updateExportUI();
         }
         
         // =================================================================
@@ -2762,6 +3515,86 @@ HTML_TEMPLATE = """
 def index():
     return render_template_string(HTML_TEMPLATE)
 
+
+# -----------------------------------------------------------------------------
+# Export Routes
+# -----------------------------------------------------------------------------
+
+@app.route('/export/mixed/<fmt>')
+def export_mixed_route(fmt):
+    """Export mixed audio (all layers combined)."""
+    if fmt not in ('mp3', 'wav'):
+        return "Invalid format. Use 'mp3' or 'wav'", 400
+    
+    if not looper:
+        return "Looper not initialized", 500
+    
+    audio_bytes, filename_or_error, content_type = looper.export_mixed(fmt)
+    
+    if audio_bytes is None:
+        return filename_or_error, 500
+    
+    return Response(
+        audio_bytes,
+        mimetype=content_type,
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename_or_error}"',
+            'Content-Length': len(audio_bytes)
+        }
+    )
+
+
+@app.route('/export/layer/<int:layer_id>/<fmt>')
+def export_layer_route(layer_id, fmt):
+    """Export a single layer."""
+    if fmt not in ('mp3', 'wav'):
+        return "Invalid format. Use 'mp3' or 'wav'", 400
+    
+    if not looper:
+        return "Looper not initialized", 500
+    
+    audio_bytes, filename_or_error, content_type = looper.export_layer(layer_id, fmt)
+    
+    if audio_bytes is None:
+        return filename_or_error, 500
+    
+    return Response(
+        audio_bytes,
+        mimetype=content_type,
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename_or_error}"',
+            'Content-Length': len(audio_bytes)
+        }
+    )
+
+
+@app.route('/export/all-layers/<fmt>')
+def export_all_layers_route(fmt):
+    """Export all layers as separate files in a ZIP archive."""
+    if fmt not in ('mp3', 'wav'):
+        return "Invalid format. Use 'mp3' or 'wav'", 400
+    
+    if not looper:
+        return "Looper not initialized", 500
+    
+    zip_bytes, filename_or_error, content_type = looper.export_all_layers(fmt)
+    
+    if zip_bytes is None:
+        return filename_or_error, 500
+    
+    return Response(
+        zip_bytes,
+        mimetype=content_type,
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename_or_error}"',
+            'Content-Length': len(zip_bytes)
+        }
+    )
+
+
+# -----------------------------------------------------------------------------
+# Socket Handlers
+# -----------------------------------------------------------------------------
 
 @socketio.on('connect')
 def handle_connect():
@@ -2816,6 +3649,8 @@ def handle_command(data):
         looper.toggle_layer(data.get('layer_id', 0))
     elif command == 'set_volume':
         looper.set_layer_volume(data.get('layer_id', 0), data.get('volume', 1.0))
+    elif command == 'set_master_volume':
+        looper.set_master_volume(data.get('volume', 0.8))
     elif command == 'delete_layer':
         looper.delete_layer(data.get('layer_id', 0))
     elif command == 'clear_all':
@@ -2872,6 +3707,17 @@ def main():
     print("=" * 60)
     print("🎸 GUITAR LOOPER")
     print("=" * 60)
+    
+    # Show export capability status
+    print("\n📦 Export capabilities:")
+    if PYDUB_AVAILABLE:
+        print("  ✓ pydub installed")
+        if FFMPEG_AVAILABLE:
+            print("  ✓ ffmpeg available - MP3 export enabled")
+        else:
+            print("  ⚠ ffmpeg not found - MP3 export disabled, WAV only")
+    else:
+        print("  ⚠ pydub not installed - export disabled")
     
     # List and select audio device
     valid_devices = list_audio_devices()
@@ -2934,5 +3780,13 @@ if __name__ == "__main__":
     if not LIBROSA_AVAILABLE:
         print("\n💡 Tip: Install librosa for tempo detection:")
         print("   pip install librosa\n")
+    
+    if not PYDUB_AVAILABLE:
+        print("\n💡 Tip: Install pydub for audio export:")
+        print("   pip install pydub\n")
+    elif not FFMPEG_AVAILABLE:
+        print("\n💡 Tip: Install ffmpeg for MP3 export:")
+        print("   sudo apt install ffmpeg (Linux)")
+        print("   brew install ffmpeg (macOS)\n")
     
     main()
