@@ -167,7 +167,12 @@ class WebLooper:
         # Stats
         self.callback_time = 0
         self.dropout_count = 0
-        
+
+        # Input level metering
+        self.input_level = 0.0       # Smoothed RMS (0–1)
+        self.input_peak = 0.0        # Peak hold (0–1)
+        self._peak_hold_frames = 0   # Callback frames since last peak reset
+
         print("✓ Looper initialized")
     
     # -------------------------------------------------------------------------
@@ -199,6 +204,24 @@ class WebLooper:
         
         if acquired:
             try:
+                # -------------------------------------------------------------
+                # INPUT LEVEL METERING (always, every callback)
+                # -------------------------------------------------------------
+                rms = float(np.sqrt(np.mean(input_samples ** 2)))
+                # Fast attack, slow decay
+                if rms > self.input_level:
+                    self.input_level = self.input_level * 0.4 + rms * 0.6
+                else:
+                    self.input_level = self.input_level * 0.93 + rms * 0.07
+                # Peak hold: ~1.5s before decaying
+                if rms >= self.input_peak:
+                    self.input_peak = rms
+                    self._peak_hold_frames = 0
+                else:
+                    self._peak_hold_frames += 1
+                    if self._peak_hold_frames > 258:  # ~1.5s at 172 callbacks/sec
+                        self.input_peak = max(self.input_peak * 0.994, rms)
+
                 # -------------------------------------------------------------
                 # STATE: RECORDING_MASTER
                 # -------------------------------------------------------------
@@ -1021,6 +1044,8 @@ class WebLooper:
             dropout_count = self.dropout_count
             layers_data = [layer.to_dict() for layer in self.layers]
             num_layers = len(self.layers)
+            input_level = self.input_level
+            input_peak = self.input_peak
         
         # Compute derived values WITHOUT lock
         position_ratio = 0.0
@@ -1086,7 +1111,9 @@ class WebLooper:
                 'callback_time_ms': callback_time * 1000,
                 'latency_ms': (BLOCKSIZE / SAMPLE_RATE) * 1000,
                 'dropout_count': dropout_count,
-            }
+            },
+            'input_level': input_level,
+            'input_peak': input_peak,
         }
     
     # -------------------------------------------------------------------------
@@ -1901,7 +1928,65 @@ HTML_TEMPLATE = """
             color: #4a5568;
             font-size: 0.8em;
         }
-        
+
+        /* Input Level Meter */
+        .level-meter-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            margin: 5px 0 10px;
+        }
+
+        .level-meter-label {
+            font-size: 0.75em;
+            color: #718096;
+            width: 36px;
+            flex-shrink: 0;
+        }
+
+        .clip-indicator {
+            color: #e53e3e;
+            font-weight: bold;
+            font-size: 0.85em;
+        }
+
+        .level-meter-bar-bg {
+            flex: 1;
+            height: 8px;
+            background: #2d3748;
+            border-radius: 4px;
+            position: relative;
+            overflow: visible;
+        }
+
+        .level-meter-bar {
+            height: 100%;
+            background: linear-gradient(to right, #38a169, #d69e2e, #e53e3e);
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.05s linear;
+        }
+
+        .level-meter-peak {
+            position: absolute;
+            top: -2px;
+            width: 3px;
+            height: 12px;
+            background: #fff;
+            border-radius: 1px;
+            left: 0%;
+            transition: left 0.1s linear;
+        }
+
+        .level-meter-db {
+            font-size: 0.75em;
+            color: #718096;
+            width: 44px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
         /* Trim Editor */
         .trim-section {
             background: #2d3748;
@@ -2432,7 +2517,16 @@ HTML_TEMPLATE = """
             <button class="btn btn-overdub" id="btnOverdub" onclick="handleOverdub()" disabled>+ OVERDUB</button>
             <button class="btn btn-clear" onclick="handleClear()">CLEAR</button>
         </div>
-        
+
+        <div class="level-meter-section">
+            <div class="level-meter-label">IN <span class="clip-indicator" id="clipIndicator"></span></div>
+            <div class="level-meter-bar-bg">
+                <div class="level-meter-bar" id="levelMeterBar"></div>
+                <div class="level-meter-peak" id="levelMeterPeak"></div>
+            </div>
+            <div class="level-meter-db" id="levelMeterDb">-∞</div>
+        </div>
+
         <div class="layers-section">
             <div class="layers-title">Layers</div>
             <div id="layersList">
@@ -3532,6 +3626,25 @@ HTML_TEMPLATE = """
                 `).join('');
             }
             
+            // --- Input Level Meter ---
+            if (serverState.input_level !== undefined) {
+                const level = serverState.input_level;
+                const peak = serverState.input_peak;
+
+                // Square root scaling for perceptual response
+                const levelPct = Math.min(100, Math.sqrt(level) * 140);
+                const peakPct = Math.min(100, Math.sqrt(peak) * 140);
+
+                document.getElementById('levelMeterBar').style.width = levelPct + '%';
+                document.getElementById('levelMeterPeak').style.left = peakPct + '%';
+
+                const db = level > 0.00001 ? (20 * Math.log10(level)).toFixed(1) : '-∞';
+                document.getElementById('levelMeterDb').textContent = db + (db !== '-∞' ? 'dB' : '');
+
+                const clipEl = document.getElementById('clipIndicator');
+                clipEl.textContent = peak > 0.95 ? 'CLIP' : '';
+            }
+
             // --- Stats ---
             if (serverState.stats) {
                 const callbackMs = serverState.stats.callback_time_ms;
@@ -3590,12 +3703,10 @@ HTML_TEMPLATE = """
         
         connect();
         
-        // Poll for UI updates (smoother progress bar)
+        // Poll for UI updates (progress bar + level meter)
         setInterval(() => {
-            if (serverState.state !== 'idle') {
-                socket.emit('get_state');
-            }
-        }, 100);  // 100ms = 10 updates/sec (was 50ms = 20/sec)
+            socket.emit('get_state');
+        }, 100);  // 100ms = 10 updates/sec
     </script>
 </body>
 </html>
