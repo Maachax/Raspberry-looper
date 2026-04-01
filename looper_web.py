@@ -173,6 +173,19 @@ class WebLooper:
         self.input_peak = 0.0        # Peak hold (0–1)
         self._peak_hold_frames = 0   # Callback frames since last peak reset
 
+        # Scenes
+        self.scenes = {}           # {scene_id: scene_dict}
+        self._next_scene_id = 1
+        self.pending_scene = None  # Scene to apply at next loop restart
+
+        # Reactive scene collapse
+        self.collapse_enabled = False
+        self.collapse_scene_id = None   # int scene id to switch to on silence
+        self.collapse_timeout = 4.0     # seconds of silence before collapsing
+        self.collapse_threshold = 0.01  # RMS threshold (≈ -40dB)
+        self._silence_frames = 0        # consecutive silent callback frames
+        self._collapse_triggered = False  # True after collapse, reset when playing again
+
         print("✓ Looper initialized")
     
     # -------------------------------------------------------------------------
@@ -221,6 +234,23 @@ class WebLooper:
                     self._peak_hold_frames += 1
                     if self._peak_hold_frames > 258:  # ~1.5s at 172 callbacks/sec
                         self.input_peak = max(self.input_peak * 0.994, rms)
+
+                # -------------------------------------------------------------
+                # REACTIVE SCENE COLLAPSE
+                # -------------------------------------------------------------
+                if (self.collapse_enabled
+                        and self.collapse_scene_id is not None
+                        and self.collapse_scene_id in self.scenes
+                        and self.state == LooperState.PLAYING):
+                    if rms < self.collapse_threshold:
+                        self._silence_frames += frames
+                        silence_secs = self._silence_frames / SAMPLE_RATE
+                        if silence_secs >= self.collapse_timeout and not self._collapse_triggered:
+                            self.pending_scene = self.scenes[self.collapse_scene_id]
+                            self._collapse_triggered = True
+                    else:
+                        self._silence_frames = 0
+                        self._collapse_triggered = False
 
                 # -------------------------------------------------------------
                 # STATE: RECORDING_MASTER
@@ -274,7 +304,12 @@ class WebLooper:
                         old_position = self.master_position
                         self.master_position = (self.master_position + frames) % self.master_length
                         loop_restarted = self.master_position < old_position
-                        
+
+                        # Apply pending scene at loop restart (PLAYING state only)
+                        if loop_restarted and self.pending_scene is not None and self.state == LooperState.PLAYING:
+                            self._apply_scene(self.pending_scene)
+                            self.pending_scene = None
+
                         # Handle OVERDUB_ARMED → RECORDING_OVERDUB transition
                         if self.state == LooperState.OVERDUB_ARMED and loop_restarted:
                             self.state = LooperState.RECORDING_OVERDUB
@@ -494,7 +529,101 @@ class WebLooper:
             self.state = LooperState.IDLE
             print("✓ All loops cleared")
             return True
-    
+
+    # -------------------------------------------------------------------------
+    # SCENE MANAGEMENT
+    # -------------------------------------------------------------------------
+
+    def save_scene(self, name: str) -> dict:
+        """Save current layer state as a named scene."""
+        with self.lock:
+            if not self.layers:
+                return {'success': False, 'error': 'No layers to save'}
+
+            scene_id = self._next_scene_id
+            self._next_scene_id += 1
+
+            layer_states = [
+                {'id': layer.id, 'is_playing': layer.is_playing, 'volume': layer.volume}
+                for layer in self.layers
+            ]
+
+            scene = {
+                'id': scene_id,
+                'name': name.strip() or f'Scene {scene_id}',
+                'layer_states': layer_states,
+            }
+            self.scenes[scene_id] = scene
+            print(f"✓ Scene saved: '{scene['name']}' ({len(layer_states)} layers)")
+            return {'success': True, 'scene': scene}
+
+    def _apply_scene(self, scene: dict):
+        """Apply a scene's layer states. Must be called within lock."""
+        layer_map = {layer.id: layer for layer in self.layers}
+        for state in scene['layer_states']:
+            layer = layer_map.get(state['id'])
+            if layer:
+                layer.is_playing = state['is_playing']
+                layer.volume = state['volume']
+        print(f"✓ Scene applied: '{scene['name']}'")
+
+    def load_scene(self, scene_id: int, quantized: bool = True) -> bool:
+        """Load a scene. If quantized=True and playing, waits for next loop restart."""
+        with self.lock:
+            scene = self.scenes.get(scene_id)
+            if not scene:
+                return False
+
+            if quantized and self.state == LooperState.PLAYING and self.master_length > 0:
+                self.pending_scene = scene
+                print(f"✓ Scene '{scene['name']}' scheduled for next loop restart")
+            else:
+                self._apply_scene(scene)
+            return True
+
+    def delete_scene(self, scene_id: int) -> bool:
+        """Delete a scene."""
+        with self.lock:
+            if scene_id not in self.scenes:
+                return False
+            name = self.scenes[scene_id]['name']
+            del self.scenes[scene_id]
+            if self.pending_scene and self.pending_scene['id'] == scene_id:
+                self.pending_scene = None
+            print(f"✓ Scene deleted: '{name}'")
+            return True
+
+    def rename_scene(self, scene_id: int, name: str) -> bool:
+        """Rename a scene."""
+        with self.lock:
+            if scene_id not in self.scenes:
+                return False
+            self.scenes[scene_id]['name'] = name.strip() or self.scenes[scene_id]['name']
+            return True
+
+    def set_collapse_scene(self, scene_id) -> bool:
+        """Designate a scene as the idle/collapse target. Pass None to clear."""
+        with self.lock:
+            if scene_id is not None and scene_id not in self.scenes:
+                return False
+            self.collapse_scene_id = scene_id
+            self._silence_frames = 0
+            self._collapse_triggered = False
+            status = f"scene {scene_id}" if scene_id else "cleared"
+            print(f"✓ Collapse scene {status}")
+            return True
+
+    def set_collapse_enabled(self, enabled: bool, timeout: float = None) -> bool:
+        """Enable/disable reactive scene collapse, optionally update timeout."""
+        with self.lock:
+            self.collapse_enabled = enabled
+            if timeout is not None:
+                self.collapse_timeout = max(1.0, float(timeout))
+            self._silence_frames = 0
+            self._collapse_triggered = False
+            print(f"✓ Collapse {'enabled' if enabled else 'disabled'} (timeout: {self.collapse_timeout}s)")
+            return True
+
     def set_bpm(self, bpm: float) -> bool:
         """Set tempo in BPM."""
         with self.lock:
@@ -1046,6 +1175,11 @@ class WebLooper:
             num_layers = len(self.layers)
             input_level = self.input_level
             input_peak = self.input_peak
+            scenes_data = list(self.scenes.values())
+            pending_scene_id = self.pending_scene['id'] if self.pending_scene else None
+            collapse_enabled = self.collapse_enabled
+            collapse_scene_id = self.collapse_scene_id
+            collapse_timeout = self.collapse_timeout
         
         # Compute derived values WITHOUT lock
         position_ratio = 0.0
@@ -1114,6 +1248,15 @@ class WebLooper:
             },
             'input_level': input_level,
             'input_peak': input_peak,
+            'scenes': {
+                'list': scenes_data,
+                'pending_id': pending_scene_id,
+            },
+            'collapse': {
+                'enabled': collapse_enabled,
+                'scene_id': collapse_scene_id,
+                'timeout': collapse_timeout,
+            },
         }
     
     # -------------------------------------------------------------------------
@@ -1987,6 +2130,160 @@ HTML_TEMPLATE = """
             flex-shrink: 0;
         }
 
+        /* Scenes */
+        .scenes-section {
+            background: #2d3748;
+            border-radius: 15px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .scenes-title {
+            font-size: 0.85em;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 10px;
+        }
+
+        .save-scene-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .scene-name-input {
+            flex: 1;
+            background: #1a202c;
+            border: 1px solid #4a5568;
+            border-radius: 8px;
+            color: #e2e8f0;
+            padding: 6px 10px;
+            font-size: 0.9em;
+        }
+
+        .scene-name-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-save-scene {
+            background: #667eea;
+            color: #fff;
+            font-size: 0.8em;
+            padding: 6px 12px;
+            white-space: nowrap;
+        }
+
+        .scene-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid #4a5568;
+        }
+
+        .scene-item:last-child {
+            border-bottom: none;
+        }
+
+        .scene-item.pending {
+            background: rgba(102, 126, 234, 0.08);
+            border-radius: 6px;
+            padding: 8px 6px;
+        }
+
+        .scene-name-display {
+            flex: 1;
+            font-size: 0.95em;
+            color: #e2e8f0;
+        }
+
+        .scene-pending-badge {
+            font-size: 0.7em;
+            background: #2c3a6e;
+            color: #667eea;
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
+
+        .scene-layer-count {
+            font-size: 0.75em;
+            color: #718096;
+        }
+
+        .btn-load-scene {
+            background: #2d4a3e;
+            color: #38a169;
+            border: 1px solid #38a169;
+            font-size: 0.75em;
+            padding: 4px 10px;
+        }
+
+        .btn-delete-scene {
+            background: none;
+            color: #fc8181;
+            border: 1px solid #fc8181;
+            font-size: 0.75em;
+            padding: 4px 8px;
+        }
+
+        .btn-idle-scene {
+            background: none;
+            border: 1px solid #4a5568;
+            color: #718096;
+            font-size: 0.8em;
+            padding: 4px 8px;
+        }
+
+        .btn-idle-scene:hover { color: #38a169; border-color: #38a169; }
+
+        .scene-item.collapse-scene {
+            border-left: 2px solid #38a169;
+            padding-left: 8px;
+        }
+
+        .scenes-empty {
+            color: #4a5568;
+            font-size: 0.85em;
+            padding: 8px 0;
+        }
+
+        .collapse-controls {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #4a5568;
+        }
+
+        .collapse-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .collapse-label {
+            font-size: 0.85em;
+            color: #a0aec0;
+        }
+
+        .collapse-timeout-input {
+            width: 48px;
+            background: #1a202c;
+            border: 1px solid #4a5568;
+            border-radius: 6px;
+            color: #e2e8f0;
+            padding: 3px 6px;
+            font-size: 0.85em;
+            text-align: center;
+        }
+
+        .collapse-hint {
+            font-size: 0.75em;
+            color: #718096;
+            margin-top: 4px;
+        }
+
         /* Trim Editor */
         .trim-section {
             background: #2d3748;
@@ -2536,10 +2833,38 @@ HTML_TEMPLATE = """
                 </div>
             </div>
         </div>
-        
+
+        <div class="scenes-section">
+            <div class="scenes-title">Scenes</div>
+            <div class="save-scene-row">
+                <input type="text" id="sceneNameInput" class="scene-name-input"
+                       placeholder="Scene name..."
+                       onkeydown="if(event.key==='Enter') saveScene()" />
+                <button class="btn btn-save-scene" onclick="saveScene()">SAVE SCENE</button>
+            </div>
+            <div id="scenesList">
+                <div class="scenes-empty">No scenes saved yet</div>
+            </div>
+            <div class="collapse-controls">
+                <div class="collapse-row">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="collapseToggle"
+                               onchange="setCollapseEnabled(this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="collapse-label">Auto-collapse on silence after</span>
+                    <input type="number" id="collapseTimeout" class="collapse-timeout-input"
+                           min="1" max="30" step="1" value="4"
+                           onchange="setCollapseTimeout(this.value)">
+                    <span class="collapse-label">s</span>
+                </div>
+                <div class="collapse-hint" id="collapseHint"></div>
+            </div>
+        </div>
+
         <div class="stats" id="stats"></div>
     </div>
-    
+
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
         // =================================================================
@@ -2939,6 +3264,86 @@ HTML_TEMPLATE = """
 
         function setLayerColor(layerId, color) {
             sendCommand('set_layer_color', { layer_id: layerId, color });
+        }
+
+        // =================================================================
+        // SCENES
+        // =================================================================
+
+        function saveScene() {
+            const input = document.getElementById('sceneNameInput');
+            const name = input.value.trim();
+            sendCommand('save_scene', { name });
+            input.value = '';
+        }
+
+        function loadScene(sceneId) {
+            const isPlaying = serverState.state === 'playing';
+            sendCommand('load_scene', { scene_id: sceneId, quantized: isPlaying });
+        }
+
+        function deleteScene(sceneId) {
+            if (confirm('Delete this scene?')) {
+                sendCommand('delete_scene', { scene_id: sceneId });
+            }
+        }
+
+        function renderScenes() {
+            const scenesList = document.getElementById('scenesList');
+            if (!serverState.scenes || serverState.scenes.list.length === 0) {
+                scenesList.innerHTML = '<div class="scenes-empty">No scenes saved yet</div>';
+                updateCollapseControls();
+                return;
+            }
+
+            const pendingId = serverState.scenes.pending_id;
+            const collapseId = serverState.collapse?.scene_id ?? null;
+            scenesList.innerHTML = serverState.scenes.list.map(scene => {
+                const isPending = scene.id === pendingId;
+                const isCollapse = scene.id === collapseId;
+                const layerCount = scene.layer_states.length;
+                const activeCount = scene.layer_states.filter(l => l.is_playing).length;
+                return `
+                    <div class="scene-item ${isPending ? 'pending' : ''} ${isCollapse ? 'collapse-scene' : ''}">
+                        <div class="scene-name-display">${scene.name}</div>
+                        <span class="scene-layer-count">${activeCount}/${layerCount}</span>
+                        ${isPending ? '<span class="scene-pending-badge">queued</span>' : ''}
+                        ${isCollapse ? '<span class="scene-pending-badge" style="background:#2d4a3e;color:#38a169">idle</span>' : ''}
+                        <button class="btn btn-idle-scene" title="${isCollapse ? 'Clear idle scene' : 'Set as idle scene'}"
+                                onclick="setCollapseScene(${isCollapse ? 'null' : scene.id})">
+                            ${isCollapse ? '★' : '☆'}
+                        </button>
+                        <button class="btn btn-load-scene" onclick="loadScene(${scene.id})">LOAD</button>
+                        <button class="btn btn-delete-scene" onclick="deleteScene(${scene.id})">✕</button>
+                    </div>
+                `;
+            }).join('');
+            updateCollapseControls();
+        }
+
+        function updateCollapseControls() {
+            const collapse = serverState.collapse || {};
+            const toggle = document.getElementById('collapseToggle');
+            const timeoutEl = document.getElementById('collapseTimeout');
+            if (toggle) toggle.checked = collapse.enabled || false;
+            if (timeoutEl) timeoutEl.value = collapse.timeout || 4;
+            const hasScene = collapse.scene_id !== null && collapse.scene_id !== undefined;
+            const hint = document.getElementById('collapseHint');
+            if (hint) hint.textContent = hasScene ? '' : 'Star a scene above to enable';
+        }
+
+        function setCollapseScene(sceneId) {
+            sendCommand('set_collapse_scene', { scene_id: sceneId });
+        }
+
+        function setCollapseEnabled(enabled) {
+            const timeout = parseFloat(document.getElementById('collapseTimeout').value) || 4;
+            sendCommand('set_collapse_enabled', { enabled, timeout });
+        }
+
+        function setCollapseTimeout(timeout) {
+            const enabled = document.getElementById('collapseToggle').checked;
+            sendCommand('set_collapse_enabled', { enabled, timeout: parseFloat(timeout) });
         }
 
         // =================================================================
@@ -3645,6 +4050,9 @@ HTML_TEMPLATE = """
                 clipEl.textContent = peak > 0.95 ? 'CLIP' : '';
             }
 
+            // --- Scenes ---
+            renderScenes();
+
             // --- Stats ---
             if (serverState.stats) {
                 const callbackMs = serverState.stats.callback_time_ms;
@@ -3872,6 +4280,18 @@ def handle_command(data):
         looper.rename_layer(data.get('layer_id', 0), data.get('name', ''))
     elif command == 'set_layer_color':
         looper.set_layer_color(data.get('layer_id', 0), data.get('color', '#667eea'))
+    elif command == 'save_scene':
+        looper.save_scene(data.get('name', ''))
+    elif command == 'load_scene':
+        looper.load_scene(data.get('scene_id'), data.get('quantized', True))
+    elif command == 'delete_scene':
+        looper.delete_scene(data.get('scene_id'))
+    elif command == 'rename_scene':
+        looper.rename_scene(data.get('scene_id'), data.get('name', ''))
+    elif command == 'set_collapse_scene':
+        looper.set_collapse_scene(data.get('scene_id'))
+    elif command == 'set_collapse_enabled':
+        looper.set_collapse_enabled(data.get('enabled', False), data.get('timeout'))
 
     # Broadcast updated state to all clients
     emit('update', looper.get_state(), broadcast=True)
