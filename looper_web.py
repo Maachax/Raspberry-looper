@@ -21,6 +21,7 @@ import time
 from enum import Enum
 from io import BytesIO
 from datetime import datetime
+from pathlib import Path
 from zipfile import ZipFile
 from flask import Flask, render_template_string, request, Response, send_file
 from flask_socketio import SocketIO, emit
@@ -63,6 +64,18 @@ MAX_LOOP_SECONDS = 120
 EXPORT_MP3_BITRATE = "192k"
 EXPORT_WAV_SAMPLE_WIDTH = 2  # 16-bit
 
+# Layer color palette (cycles by layer id)
+LAYER_COLORS = [
+    '#667eea',  # Purple
+    '#38a169',  # Green
+    '#ed8936',  # Orange
+    '#e53e3e',  # Red
+    '#319795',  # Teal
+    '#d53f8c',  # Pink
+    '#d69e2e',  # Yellow
+    '#3182ce',  # Blue
+]
+
 # =============================================================================
 # STATE MACHINE
 # =============================================================================
@@ -88,7 +101,8 @@ class LoopLayer:
         self.length = len(buffer)
         self.volume = 1.0
         self.is_playing = True
-    
+        self.color = LAYER_COLORS[layer_id % len(LAYER_COLORS)]
+
     def get_sample_at(self, position: int) -> float:
         """Get sample value at given position (with volume applied)."""
         if not self.is_playing or position >= self.length:
@@ -103,6 +117,7 @@ class LoopLayer:
             'duration': self.length / SAMPLE_RATE,
             'volume': self.volume,
             'is_playing': self.is_playing,
+            'color': self.color,
         }
 
 # =============================================================================
@@ -430,7 +445,23 @@ class WebLooper:
             
             print(f"✓ Deleted {name}")
             return True
-    
+
+    def rename_layer(self, layer_id: int, name: str) -> bool:
+        """Rename a layer."""
+        with self.lock:
+            if 0 <= layer_id < len(self.layers):
+                self.layers[layer_id].name = name.strip() or self.layers[layer_id].name
+                return True
+            return False
+
+    def set_layer_color(self, layer_id: int, color: str) -> bool:
+        """Set color for a layer."""
+        with self.lock:
+            if 0 <= layer_id < len(self.layers):
+                self.layers[layer_id].color = color
+                return True
+            return False
+
     def clear_all(self) -> bool:
         """Clear all loops and reset to IDLE state."""
         with self.lock:
@@ -1733,11 +1764,45 @@ HTML_TEMPLATE = """
             font-weight: bold;
             font-size: 1.1em;
         }
-        
+
         .layer-name.master {
             color: #667eea;
         }
-        
+
+        .layer-name-btn {
+            background: none;
+            border: none;
+            font-weight: bold;
+            font-size: 1.1em;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .layer-name-btn.master {
+            color: #667eea;
+        }
+
+        .color-swatches {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+
+        .color-swatch {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.15s;
+        }
+
+        .color-swatch.active,
+        .color-swatch:hover {
+            border-color: #fff;
+        }
+
         .layer-status {
             font-size: 1.2em;
         }
@@ -2413,6 +2478,12 @@ HTML_TEMPLATE = """
             }
         };
         
+        // Layer color palette (must match Python LAYER_COLORS)
+        const LAYER_COLORS = [
+            '#667eea', '#38a169', '#ed8936', '#e53e3e',
+            '#319795', '#d53f8c', '#d69e2e', '#3182ce'
+        ];
+
         // Local tempo state
         let localBpm = 120;
         let tapTimes = [];
@@ -2764,7 +2835,18 @@ HTML_TEMPLATE = """
                 sendCommand('delete_layer', { layer_id: layerId });
             }
         }
-        
+
+        function renameLayer(layerId, currentName) {
+            const name = prompt('Rename layer:', currentName);
+            if (name !== null && name.trim() !== '') {
+                sendCommand('rename_layer', { layer_id: layerId, name: name.trim() });
+            }
+        }
+
+        function setLayerColor(layerId, color) {
+            sendCommand('set_layer_color', { layer_id: layerId, color });
+        }
+
         // =================================================================
         // KEYBOARD HANDLING
         // =================================================================
@@ -3409,19 +3491,31 @@ HTML_TEMPLATE = """
                 `;
             } else {
                 layersList.innerHTML = serverState.layers.map(layer => `
-                    <div class="layer">
+                    <div class="layer" style="border-left-color: ${layer.color}">
                         <div class="layer-header">
-                            <span class="layer-name ${layer.id === 0 ? 'master' : ''}">${layer.name}</span>
+                            <button class="layer-name-btn ${layer.id === 0 ? 'master' : ''}"
+                                    style="color: ${layer.color}"
+                                    onclick="renameLayer(${layer.id}, '${layer.name.replace(/'/g, "\\'")}')">
+                                ${layer.name}
+                            </button>
                             <span class="layer-status">${layer.is_playing ? '▶️' : '⏸️'}</span>
                         </div>
-                        <div class="layer-controls">
-                            <button class="btn btn-small btn-mute ${!layer.is_playing ? 'muted' : ''}" 
+                        <div class="color-swatches">
+                            ${LAYER_COLORS.map(c => `
+                                <div class="color-swatch ${c === layer.color ? 'active' : ''}"
+                                     style="background: ${c}"
+                                     onclick="setLayerColor(${layer.id}, '${c}')">
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="layer-controls" style="margin-top: 10px">
+                            <button class="btn btn-small btn-mute ${!layer.is_playing ? 'muted' : ''}"
                                     onclick="toggleLayer(${layer.id})">
                                 ${layer.is_playing ? 'MUTE' : 'UNMUTE'}
                             </button>
                             <div class="volume-control">
                                 <span>🔊</span>
-                                <input type="range" 
+                                <input type="range"
                                        class="volume-slider"
                                        min="0" max="1" step="0.01"
                                        value="${layer.volume}"
@@ -3663,7 +3757,11 @@ def handle_command(data):
         looper.set_quantize(data.get('enabled', True))
     elif command == 'apply_trim':
         looper.apply_trim(data.get('start', 0.0), data.get('end', 0.0))
-    
+    elif command == 'rename_layer':
+        looper.rename_layer(data.get('layer_id', 0), data.get('name', ''))
+    elif command == 'set_layer_color':
+        looper.set_layer_color(data.get('layer_id', 0), data.get('color', '#667eea'))
+
     # Broadcast updated state to all clients
     emit('update', looper.get_state(), broadcast=True)
 
