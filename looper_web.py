@@ -14,6 +14,7 @@ State Machine:
     IDLE → RECORDING_MASTER → PLAYING ⇄ OVERDUB_ARMED → RECORDING_OVERDUB → PLAYING
 """
 
+import json
 import sounddevice as sd
 import numpy as np
 import threading
@@ -63,6 +64,10 @@ MAX_LOOP_SECONDS = 120
 # Export settings
 EXPORT_MP3_BITRATE = "192k"
 EXPORT_WAV_SAMPLE_WIDTH = 2  # 16-bit
+
+# Sessions directory (relative to this script)
+SESSIONS_DIR = Path(__file__).parent / '_sessions'
+SESSIONS_DIR.mkdir(exist_ok=True)
 
 # Layer color palette (cycles by layer id)
 LAYER_COLORS = [
@@ -623,6 +628,145 @@ class WebLooper:
             self._collapse_triggered = False
             print(f"✓ Collapse {'enabled' if enabled else 'disabled'} (timeout: {self.collapse_timeout}s)")
             return True
+
+    # -------------------------------------------------------------------------
+    # SESSION PERSISTENCE
+    # -------------------------------------------------------------------------
+
+    def save_session(self, name: str) -> dict:
+        """Save current session (all loops + metadata) to disk."""
+        with self.lock:
+            if not self.layers or self.master_length == 0:
+                return {'success': False, 'error': 'Nothing to save'}
+            if self.state in (LooperState.RECORDING_MASTER, LooperState.RECORDING_OVERDUB):
+                return {'success': False, 'error': 'Cannot save while recording'}
+
+            timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            safe_name = ''.join(c if c.isalnum() or c in '-_ ' else '' for c in name.strip())
+            folder_name = f"{timestamp}_{safe_name}" if safe_name else timestamp
+            session_dir = SESSIONS_DIR / folder_name
+
+            meta = {
+                'name': name.strip() or timestamp,
+                'created_at': datetime.now().isoformat(),
+                'bpm': self.bpm,
+                'beats_per_bar': self.beats_per_bar,
+                'master_volume': self.master_volume,
+                'master_length': self.master_length,
+                'layers': [
+                    {
+                        'id': l.id,
+                        'name': l.name,
+                        'color': l.color,
+                        'volume': l.volume,
+                        'is_playing': l.is_playing,
+                    }
+                    for l in self.layers
+                ],
+                'scenes': {str(k): v for k, v in self.scenes.items()},
+                'next_scene_id': self._next_scene_id,
+            }
+            buffers = [(l.id, l.buffer[:l.length].copy()) for l in self.layers]
+
+        # Write to disk without lock
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            (session_dir / 'meta.json').write_text(json.dumps(meta, indent=2))
+            for layer_id, buf in buffers:
+                np.save(str(session_dir / f'layer_{layer_id}.npy'), buf)
+            print(f"✓ Session saved: {folder_name} ({len(buffers)} layers)")
+            return {'success': True, 'session_id': folder_name, 'name': meta['name']}
+        except Exception as e:
+            print(f"✗ Session save failed: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def load_session(self, session_id: str) -> dict:
+        """Load a session from disk, replacing current state."""
+        session_dir = SESSIONS_DIR / session_id
+
+        if not session_dir.exists():
+            return {'success': False, 'error': 'Session not found'}
+
+        try:
+            meta = json.loads((session_dir / 'meta.json').read_text())
+
+            buffers = {}
+            for layer_meta in meta['layers']:
+                layer_id = layer_meta['id']
+                npy_path = session_dir / f'layer_{layer_id}.npy'
+                if npy_path.exists():
+                    buffers[layer_id] = np.load(str(npy_path))
+
+            if 0 not in buffers:
+                return {'success': False, 'error': 'Master layer audio missing'}
+
+        except Exception as e:
+            return {'success': False, 'error': f'Failed to read session: {e}'}
+
+        with self.lock:
+            self.layers = []
+            for layer_meta in meta['layers']:
+                lid = layer_meta['id']
+                if lid not in buffers:
+                    continue
+                layer = LoopLayer(lid, layer_meta['name'], buffers[lid])
+                layer.color = layer_meta.get('color', LAYER_COLORS[lid % len(LAYER_COLORS)])
+                layer.volume = layer_meta.get('volume', 1.0)
+                layer.is_playing = layer_meta.get('is_playing', True)
+                self.layers.append(layer)
+
+            self.master_length = meta.get('master_length', len(buffers[0]))
+            self.master_position = 0
+            self.bpm = meta.get('bpm', 120.0)
+            self.beats_per_bar = meta.get('beats_per_bar', 4)
+            self.master_volume = meta.get('master_volume', 0.8)
+
+            raw_scenes = meta.get('scenes', {})
+            self.scenes = {int(k): v for k, v in raw_scenes.items()}
+            self._next_scene_id = meta.get('next_scene_id', len(self.scenes) + 1)
+            self.pending_scene = None
+
+            self.state = LooperState.PLAYING
+            print(f"✓ Session loaded: {meta['name']} ({len(self.layers)} layers)")
+
+        return {'success': True, 'name': meta['name']}
+
+    def delete_session(self, session_id: str) -> dict:
+        """Delete a session from disk."""
+        session_dir = SESSIONS_DIR / session_id
+        if not session_dir.exists():
+            return {'success': False, 'error': 'Session not found'}
+        try:
+            import shutil
+            shutil.rmtree(session_dir)
+            print(f"✓ Session deleted: {session_id}")
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    @staticmethod
+    def list_sessions() -> list:
+        """Return list of saved sessions sorted by most recent first."""
+        sessions = []
+        for session_dir in sorted(SESSIONS_DIR.iterdir(), reverse=True):
+            if not session_dir.is_dir():
+                continue
+            meta_path = session_dir / 'meta.json'
+            if not meta_path.exists():
+                continue
+            try:
+                meta = json.loads(meta_path.read_text())
+                sessions.append({
+                    'id': session_dir.name,
+                    'name': meta.get('name', session_dir.name),
+                    'created_at': meta.get('created_at', ''),
+                    'bpm': meta.get('bpm', 0),
+                    'layer_count': len(meta.get('layers', [])),
+                    'scene_count': len(meta.get('scenes', {})),
+                })
+            except Exception:
+                continue
+        return sessions
 
     def set_bpm(self, bpm: float) -> bool:
         """Set tempo in BPM."""
@@ -2284,6 +2428,71 @@ HTML_TEMPLATE = """
             margin-top: 4px;
         }
 
+        /* Sessions */
+        .sessions-section {
+            background: #2d3748;
+            border-radius: 15px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .sessions-title {
+            font-size: 0.85em;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 10px;
+        }
+
+        .session-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid #4a5568;
+        }
+
+        .session-item:last-child {
+            border-bottom: none;
+        }
+
+        .session-info {
+            flex: 1;
+        }
+
+        .session-name {
+            font-size: 0.95em;
+            color: #e2e8f0;
+        }
+
+        .session-meta {
+            font-size: 0.75em;
+            color: #718096;
+            margin-top: 2px;
+        }
+
+        .btn-load-session {
+            background: #2d4a3e;
+            color: #38a169;
+            border: 1px solid #38a169;
+            font-size: 0.75em;
+            padding: 4px 10px;
+        }
+
+        .btn-delete-session {
+            background: none;
+            color: #fc8181;
+            border: 1px solid #fc8181;
+            font-size: 0.75em;
+            padding: 4px 8px;
+        }
+
+        .sessions-empty {
+            color: #4a5568;
+            font-size: 0.85em;
+            padding: 8px 0;
+        }
+
         /* Trim Editor */
         .trim-section {
             background: #2d3748;
@@ -2862,6 +3071,19 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
+        <div class="sessions-section">
+            <div class="sessions-title">Sessions</div>
+            <div class="save-scene-row">
+                <input type="text" id="sessionNameInput" class="scene-name-input"
+                       placeholder="Session name..."
+                       onkeydown="if(event.key==='Enter') saveSession()" />
+                <button class="btn btn-save-scene" onclick="saveSession()">SAVE</button>
+            </div>
+            <div id="sessionsList">
+                <div class="sessions-empty">No sessions saved yet</div>
+            </div>
+        </div>
+
         <div class="stats" id="stats"></div>
     </div>
 
@@ -3110,6 +3332,8 @@ HTML_TEMPLATE = """
                 document.getElementById('connectionStatus').className = 'connection-status connected';
                 // Initialize audio context on first interaction
                 document.addEventListener('click', () => initAudio(), { once: true });
+                // Fetch saved sessions
+                socket.emit('list_sessions');
             });
             
             socket.on('disconnect', () => {
@@ -3122,7 +3346,20 @@ HTML_TEMPLATE = """
                 serverState = data;
                 updateUI();
             });
-            
+
+            socket.on('sessions_list', (data) => {
+                sessionsList = data.sessions || [];
+                renderSessions();
+            });
+
+            socket.on('session_saved', (result) => {
+                if (!result.success) alert('Save failed: ' + result.error);
+            });
+
+            socket.on('session_loaded', (result) => {
+                if (!result.success) alert('Load failed: ' + result.error);
+            });
+
             // Handle waveform data from server
             socket.on('waveform', (data) => {
                 waveformData = data.data || [];
@@ -3344,6 +3581,58 @@ HTML_TEMPLATE = """
         function setCollapseTimeout(timeout) {
             const enabled = document.getElementById('collapseToggle').checked;
             sendCommand('set_collapse_enabled', { enabled, timeout: parseFloat(timeout) });
+        }
+
+        // =================================================================
+        // SESSIONS
+        // =================================================================
+
+        let sessionsList = [];
+
+        function saveSession() {
+            const input = document.getElementById('sessionNameInput');
+            const name = input.value.trim();
+            sendCommand('save_session', { name });
+            input.value = '';
+        }
+
+        function loadSession(sessionId, sessionName) {
+            const hasLoops = serverState.layers.length > 0;
+            const msg = hasLoops
+                ? `Load "${sessionName}"? Current loops will be replaced.`
+                : `Load "${sessionName}"?`;
+            if (!confirm(msg)) return;
+            sendCommand('load_session', { session_id: sessionId });
+        }
+
+        function deleteSession(sessionId, sessionName) {
+            if (!confirm(`Delete session "${sessionName}"? This cannot be undone.`)) return;
+            sendCommand('delete_session', { session_id: sessionId });
+        }
+
+        function renderSessions() {
+            const el = document.getElementById('sessionsList');
+            if (sessionsList.length === 0) {
+                el.innerHTML = '<div class="sessions-empty">No sessions saved yet</div>';
+                return;
+            }
+            el.innerHTML = sessionsList.map(s => {
+                const date = s.created_at ? new Date(s.created_at).toLocaleDateString() : '';
+                const bpm = s.bpm ? `${Math.round(s.bpm)} BPM · ` : '';
+                const meta = `${bpm}${s.layer_count} loop${s.layer_count !== 1 ? 's' : ''}${s.scene_count ? ` · ${s.scene_count} scenes` : ''} · ${date}`;
+                return `
+                    <div class="session-item">
+                        <div class="session-info">
+                            <div class="session-name">${s.name}</div>
+                            <div class="session-meta">${meta}</div>
+                        </div>
+                        <button class="btn btn-load-session"
+                                onclick="loadSession('${s.id}', ${JSON.stringify(s.name)})">LOAD</button>
+                        <button class="btn btn-delete-session"
+                                onclick="deleteSession('${s.id}', ${JSON.stringify(s.name)})">✕</button>
+                    </div>
+                `;
+            }).join('');
         }
 
         // =================================================================
@@ -4244,6 +4533,11 @@ def handle_detect_tempo():
         emit('tempo_detected', result)
 
 
+@socketio.on('list_sessions')
+def handle_list_sessions():
+    emit('sessions_list', {'sessions': WebLooper.list_sessions()})
+
+
 @socketio.on('command')
 def handle_command(data):
     """Handle commands from web client."""
@@ -4292,6 +4586,21 @@ def handle_command(data):
         looper.set_collapse_scene(data.get('scene_id'))
     elif command == 'set_collapse_enabled':
         looper.set_collapse_enabled(data.get('enabled', False), data.get('timeout'))
+    elif command == 'save_session':
+        result = looper.save_session(data.get('name', ''))
+        emit('session_saved', result)
+        emit('sessions_list', {'sessions': WebLooper.list_sessions()}, broadcast=True)
+        return  # broadcast already done
+    elif command == 'load_session':
+        result = looper.load_session(data.get('session_id', ''))
+        if result['success']:
+            emit('update', looper.get_state(), broadcast=True)
+        emit('session_loaded', result)
+        return
+    elif command == 'delete_session':
+        looper.delete_session(data.get('session_id', ''))
+        emit('sessions_list', {'sessions': WebLooper.list_sessions()}, broadcast=True)
+        return
 
     # Broadcast updated state to all clients
     emit('update', looper.get_state(), broadcast=True)
