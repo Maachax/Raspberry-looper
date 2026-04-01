@@ -886,10 +886,50 @@ class WebLooper:
     def can_trim(self) -> bool:
         """Check if trimming is currently allowed."""
         with self.lock:
-            return (len(self.layers) == 1 and 
+            return (len(self.layers) == 1 and
                     self.state in (LooperState.PLAYING,) and
                     self.master_length > 0)
-    
+
+    def auto_trim_silence(self, threshold_db: float = -40.0) -> bool:
+        """
+        Trim silence from start and end of master loop.
+        Scans for first/last window exceeding threshold_db.
+        Only allowed when no overdubs exist.
+        """
+        with self.lock:
+            if len(self.layers) != 1 or self.master_length == 0:
+                print("✗ Auto-trim: no master loop or overdubs exist")
+                return False
+            if self.state not in (LooperState.PLAYING,):
+                print("✗ Auto-trim: invalid state")
+                return False
+            buffer = self.layers[0].buffer[:self.master_length].copy()
+
+        threshold_linear = 10 ** (threshold_db / 20.0)
+        window = max(int(0.005 * SAMPLE_RATE), 1)  # 5ms window
+        abs_buf = np.abs(buffer)
+
+        start_sample = 0
+        for i in range(0, len(buffer) - window, window):
+            if np.sqrt(np.mean(abs_buf[i:i + window] ** 2)) > threshold_linear:
+                start_sample = max(0, i - window)
+                break
+
+        end_sample = len(buffer)
+        for i in range(len(buffer) - window, 0, -window):
+            if np.sqrt(np.mean(abs_buf[i:i + window] ** 2)) > threshold_linear:
+                end_sample = min(len(buffer), i + 2 * window)
+                break
+
+        if start_sample >= end_sample:
+            print("✗ Auto-trim: entire buffer below threshold — nothing to trim")
+            return False
+
+        start_time = start_sample / SAMPLE_RATE
+        end_time = end_sample / SAMPLE_RATE
+        print(f"  Auto-trim detected: {start_time:.3f}s → {end_time:.3f}s")
+        return self.apply_trim(start_time, end_time)
+
     def detect_tempo(self) -> dict:
         """
         Detect tempo from the master loop using librosa.
@@ -2875,8 +2915,15 @@ HTML_TEMPLATE = """
                     <div class="tempo-option">
                         <label>Quantize:</label>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="quantizeToggle" checked 
+                            <input type="checkbox" id="quantizeToggle" checked
                                    onchange="setQuantize(this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="tempo-option">
+                        <label>Pre-roll</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="prerollToggle" checked>
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
@@ -2973,6 +3020,9 @@ HTML_TEMPLATE = """
                     </div>
                     
                     <div class="trim-actions">
+                        <button class="btn btn-small btn-auto-trim" onclick="autoTrimSilence()">
+                            ✂ Auto-trim silence
+                        </button>
                         <button class="btn btn-small btn-trim-reset" onclick="resetTrim()">
                             ↺ Reset
                         </button>
@@ -3426,31 +3476,32 @@ HTML_TEMPLATE = """
                 await new Promise(resolve => setTimeout(resolve, beatDuration));
             }
             
-            // Show "GO!" with downbeat click
+            // Show "GO!" — fire recording on the beat, then hide overlay
             numberEl.textContent = 'GO!';
             numberEl.className = 'countdown-number countdown-go';
             playClick(true);
-            
+            sendCommand('start_recording');  // On the beat, not 300ms late
+
             await new Promise(resolve => setTimeout(resolve, 300));
-            
+
             overlay.style.display = 'none';
             isCountingDown = false;
             document.getElementById('btnRec').disabled = false;
         }
-        
+
         async function handleRec() {
             if (isCountingDown) return;
-            
+
             if (serverState.state === 'idle') {
-                // Initialize audio context (required for metronome)
                 initAudio();
-                
-                // Get beats per bar for countdown
-                const beatsPerBar = parseInt(document.getElementById('beatsPerBar').value) || 4;
-                
-                // Start countdown (1 bar), then record
-                await countdown(beatsPerBar);
-                sendCommand('start_recording');
+                const preroll = document.getElementById('prerollToggle').checked;
+                if (preroll) {
+                    const beatsPerBar = parseInt(document.getElementById('beatsPerBar').value) || 4;
+                    await countdown(beatsPerBar);
+                    // countdown sends start_recording itself
+                } else {
+                    sendCommand('start_recording');
+                }
             } else if (serverState.state === 'recording_master') {
                 sendCommand('stop_recording');
             }
@@ -3857,7 +3908,12 @@ HTML_TEMPLATE = """
             trimEnd = originalDuration;
             updateTrimUI();
         }
-        
+
+        function autoTrimSilence() {
+            if (!serverState.trim?.can_trim) return;
+            sendCommand('auto_trim_silence');
+        }
+
         function applyTrim() {
             if (!serverState.trim?.can_trim) {
                 alert('Cannot trim: overdubs have been recorded');
@@ -4570,6 +4626,8 @@ def handle_command(data):
         looper.set_quantize(data.get('enabled', True))
     elif command == 'apply_trim':
         looper.apply_trim(data.get('start', 0.0), data.get('end', 0.0))
+    elif command == 'auto_trim_silence':
+        looper.auto_trim_silence()
     elif command == 'rename_layer':
         looper.rename_layer(data.get('layer_id', 0), data.get('name', ''))
     elif command == 'set_layer_color':
