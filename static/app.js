@@ -170,6 +170,10 @@
         
         // Export state
         let exportSectionExpanded = false;
+
+        // Render cache — skip innerHTML when data hasn't changed
+        let _lastLayersJson = '';
+        let _lastScenesJson = '';
         
         // =================================================================
         // WEB AUDIO - METRONOME
@@ -557,6 +561,10 @@
         }
 
         function renderScenes() {
+            const _scenesJson = JSON.stringify(serverState.scenes) + (serverState.collapse?.scene_id ?? '');
+            if (_scenesJson === _lastScenesJson) return;
+            _lastScenesJson = _scenesJson;
+
             const scenesList = document.getElementById('scenesList');
             if (!serverState.scenes || serverState.scenes.list.length === 0) {
                 scenesList.innerHTML = '<div class="scenes-empty">No scenes saved yet</div>';
@@ -1305,7 +1313,10 @@
             
             // --- Layers List ---
             const layersList = document.getElementById('layersList');
-            
+            const _layersJson = JSON.stringify(serverState.layers);
+            if (_layersJson !== _lastLayersJson) {
+                _lastLayersJson = _layersJson;
+
             if (serverState.layers.length === 0) {
                 layersList.innerHTML = `
                     <div class="empty-state">
@@ -1355,7 +1366,8 @@
                     </div>
                 `).join('');
             }
-            
+            } // end layers render guard
+
             // --- Input Level Meter ---
             if (serverState.input_level !== undefined) {
                 const level = serverState.input_level;
