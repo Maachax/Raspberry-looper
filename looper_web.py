@@ -24,7 +24,7 @@ from io import BytesIO
 from datetime import datetime
 from pathlib import Path
 from zipfile import ZipFile
-from flask import Flask, render_template_string, request, Response, send_file
+from flask import Flask, render_template_string, request, Response, send_file, jsonify
 from flask_socketio import SocketIO, emit
 
 # Optional: librosa for tempo detection
@@ -190,6 +190,10 @@ class WebLooper:
         self.collapse_threshold = 0.01  # RMS threshold (≈ -40dB)
         self._silence_frames = 0        # consecutive silent callback frames
         self._collapse_triggered = False  # True after collapse, reset when playing again
+
+        # Scale visualizer
+        self.scale_root = 'A'
+        self.scale_type = 'minor'
 
         print("✓ Looper initialized")
     
@@ -793,7 +797,15 @@ class WebLooper:
             status = "enabled" if enabled else "disabled"
             print(f"✓ Quantization {status}")
             return True
-    
+
+    def set_scale(self, root: str, scale_type: str) -> bool:
+        """Set scale root and type for the visualizer."""
+        with self.lock:
+            self.scale_root = root
+            self.scale_type = scale_type
+        print(f"✓ Scale: {root} {scale_type}")
+        return True
+
     # -------------------------------------------------------------------------
     # WAVEFORM & TRIM
     # -------------------------------------------------------------------------
@@ -1440,6 +1452,10 @@ class WebLooper:
                 'enabled': collapse_enabled,
                 'scene_id': collapse_scene_id,
                 'timeout': collapse_timeout,
+            },
+            'scale': {
+                'root': self.scale_root,
+                'scale_type': self.scale_type,
             },
         }
     
@@ -2896,6 +2912,80 @@ HTML_TEMPLATE = """
             padding: 28px 40px;
             font-size: 1.3em;
         }
+
+        /* Scale Visualizer */
+        .scale-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .scale-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .scale-title {
+            font-weight: bold;
+            font-size: 0.85em;
+            color: #a0aec0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .scale-type-select {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #eee;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .scale-root-row {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 10px;
+        }
+
+        .scale-root-btn {
+            flex: 1;
+            min-width: 0;
+            padding: 7px 2px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 6px;
+            color: #718096;
+            font-size: 0.78em;
+            cursor: pointer;
+            transition: all 0.12s;
+            font-weight: 500;
+            text-align: center;
+        }
+
+        .scale-root-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #eee;
+        }
+
+        .scale-root-btn.active {
+            background: #ed8936;
+            border-color: #ed8936;
+            color: #1a1a2e;
+            font-weight: bold;
+        }
+
+        .fretboard-container {
+            background: #0d1117;
+            border-radius: 8px;
+            overflow: hidden;
+            padding: 6px 4px 2px;
+        }
     </style>
 </head>
 <body>
@@ -3130,6 +3220,27 @@ HTML_TEMPLATE = """
             <div class="level-meter-db" id="levelMeterDb">-∞</div>
         </div>
 
+        <!-- Scale Visualizer -->
+        <div class="scale-section">
+            <div class="scale-header">
+                <span class="scale-title">Scale</span>
+                <select class="scale-type-select" id="scaleTypeSelect" onchange="setScaleType(this.value)">
+                    <option value="minor">Natural Minor</option>
+                    <option value="major">Major</option>
+                    <option value="pent_minor">Pentatonic Minor</option>
+                    <option value="pent_major">Pentatonic Major</option>
+                    <option value="blues">Blues</option>
+                    <option value="dorian">Dorian</option>
+                    <option value="mixolydian">Mixolydian</option>
+                    <option value="phrygian">Phrygian</option>
+                </select>
+            </div>
+            <div class="scale-root-row" id="scaleRootRow"></div>
+            <div class="fretboard-container">
+                <div id="fretboard"></div>
+            </div>
+        </div>
+
         <div class="layers-section">
             <div class="layers-title">Layers</div>
             <div id="layersList">
@@ -3221,6 +3332,127 @@ HTML_TEMPLATE = """
             '#667eea', '#38a169', '#ed8936', '#e53e3e',
             '#319795', '#d53f8c', '#d69e2e', '#3182ce'
         ];
+
+        // =================================================================
+        // SCALE VISUALIZER
+        // =================================================================
+
+        const SCALE_NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        // Open string notes in semitones from C: Low E, A, D, G, B, High e
+        const OPEN_STRINGS = [4, 9, 2, 7, 11, 4];
+        const SCALE_INTERVALS = {
+            'minor':      [0, 2, 3, 5, 7, 8, 10],
+            'major':      [0, 2, 4, 5, 7, 9, 11],
+            'pent_minor': [0, 3, 5, 7, 10],
+            'pent_major': [0, 2, 4, 7, 9],
+            'blues':      [0, 3, 5, 6, 7, 10],
+            'dorian':     [0, 2, 3, 5, 7, 9, 10],
+            'mixolydian': [0, 2, 4, 5, 7, 9, 10],
+            'phrygian':   [0, 1, 3, 5, 7, 8, 10],
+        };
+
+        let scaleRoot = 'A';
+        let scaleType = 'minor';
+
+        function initScaleRootButtons() {
+            const row = document.getElementById('scaleRootRow');
+            row.innerHTML = SCALE_NOTES.map(n =>
+                `<button class="scale-root-btn${n === scaleRoot ? ' active' : ''}" ` +
+                `data-note="${n}" onclick="setScaleRoot('${n}')">${n}</button>`
+            ).join('');
+        }
+
+        function updateScaleRootButtons() {
+            document.querySelectorAll('.scale-root-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.note === scaleRoot);
+            });
+        }
+
+        function setScaleRoot(note) {
+            scaleRoot = note;
+            updateScaleRootButtons();
+            renderFretboard();
+            sendCommand('set_scale', { root: scaleRoot, scale_type: scaleType });
+        }
+
+        function setScaleType(type) {
+            scaleType = type;
+            renderFretboard();
+            sendCommand('set_scale', { root: scaleRoot, scale_type: scaleType });
+        }
+
+        function syncScaleFromServer(scaleData) {
+            if (!scaleData) return;
+            const newRoot = scaleData.root || 'A';
+            const newType = scaleData.scale_type || 'minor';
+            if (newRoot === scaleRoot && newType === scaleType) return;
+            scaleRoot = newRoot;
+            scaleType = newType;
+            updateScaleRootButtons();
+            const sel = document.getElementById('scaleTypeSelect');
+            if (sel) sel.value = scaleType;
+            renderFretboard();
+        }
+
+        function renderFretboard() {
+            const rootIdx = SCALE_NOTES.indexOf(scaleRoot);
+            const intervals = new Set(SCALE_INTERVALS[scaleType] || []);
+
+            const W = 640, H = 112;
+            const padL = 32, padR = 10, padT = 12, padB = 22;
+            const FRETS = 12, STRINGS = 6;
+            const fretW = (W - padL - padR) / FRETS;
+            const stringH = (H - padT - padB) / (STRINGS - 1);
+            const DOT_R = 6.5;
+            const openX = padL - fretW * 0.58;
+
+            const fretX = f => padL + f * fretW;
+            const noteX = f => f === 0 ? openX : padL + (f - 0.5) * fretW;
+            const stringY = s => padT + (STRINGS - 1 - s) * stringH; // s=0 = low E = bottom row
+
+            let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" width="100%" style="display:block">`;
+
+            // String lines (low E thickest at bottom)
+            for (let s = 0; s < STRINGS; s++) {
+                const y = stringY(s);
+                const sw = 0.7 + s * 0.32;
+                svg += `<line x1="${openX - 4}" y1="${y}" x2="${fretX(FRETS)}" y2="${y}" stroke="#3a4557" stroke-width="${sw}"/>`;
+            }
+
+            // Fret lines (nut thicker)
+            for (let f = 0; f <= FRETS; f++) {
+                const x = fretX(f);
+                svg += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + (STRINGS-1)*stringH}" stroke="${f === 0 ? '#6b7280' : '#1e2533'}" stroke-width="${f === 0 ? 3 : 1.5}"/>`;
+            }
+
+            // Position markers below strings
+            const markerY = padT + (STRINGS - 1) * stringH + 13;
+            for (const mf of [3, 5, 7, 9]) {
+                svg += `<circle cx="${padL + (mf - 0.5) * fretW}" cy="${markerY}" r="3.5" fill="#2d3748"/>`;
+            }
+            const x12 = padL + 11.5 * fretW;
+            svg += `<circle cx="${x12 - 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
+            svg += `<circle cx="${x12 + 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
+
+            // Note dots
+            for (let s = 0; s < STRINGS; s++) {
+                const y = stringY(s);
+                for (let f = 0; f <= FRETS; f++) {
+                    const noteIdx = (OPEN_STRINGS[s] + f) % 12;
+                    const interval = (noteIdx - rootIdx + 12) % 12;
+                    if (!intervals.has(interval)) continue;
+                    const isRoot = interval === 0;
+                    const x = noteX(f);
+                    svg += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${isRoot ? '#ed8936' : '#4fd1c5'}" opacity="0.92"/>`;
+                    if (isRoot) {
+                        svg += `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="7.5" fill="#1a1a2e" font-weight="bold">${SCALE_NOTES[noteIdx]}</text>`;
+                    }
+                }
+            }
+
+            svg += `</svg>`;
+            document.getElementById('fretboard').innerHTML = svg;
+        }
 
         // Local tempo state
         let localBpm = 120;
@@ -4495,6 +4727,9 @@ HTML_TEMPLATE = """
             
             // --- Export ---
             updateExportUI();
+
+            // --- Scale (sync from external source like music generator) ---
+            syncScaleFromServer(serverState.scale);
         }
         
         // =================================================================
@@ -4527,7 +4762,9 @@ HTML_TEMPLATE = """
         // =================================================================
 
         connect();
-        
+        initScaleRootButtons();
+        renderFretboard();
+
         // Poll for UI updates (progress bar + level meter)
         setInterval(() => {
             socket.emit('get_state');
@@ -4620,6 +4857,39 @@ def export_all_layers_route(fmt):
             'Content-Length': len(zip_bytes)
         }
     )
+
+
+# -----------------------------------------------------------------------------
+# Scale API (for music generator integration)
+# -----------------------------------------------------------------------------
+
+@app.route('/api/scale', methods=['GET'])
+def get_scale_api():
+    """Return current scale + BPM — used by music generator to sync."""
+    if not looper:
+        return jsonify({'error': 'not ready'}), 503
+    return jsonify({
+        'root': looper.scale_root,
+        'scale': looper.scale_type,
+        'bpm': looper.bpm,
+    })
+
+
+@app.route('/api/scale', methods=['POST'])
+def set_scale_api():
+    """Set scale root/type from music generator (and optionally BPM)."""
+    if not looper:
+        return jsonify({'error': 'not ready'}), 503
+    data = request.json or {}
+    if 'root' in data or 'scale' in data:
+        looper.set_scale(
+            data.get('root', looper.scale_root),
+            data.get('scale', looper.scale_type),
+        )
+    if 'bpm' in data:
+        looper.set_bpm(float(data['bpm']))
+    socketio.emit('update', looper.get_state())
+    return jsonify({'success': True})
 
 
 # -----------------------------------------------------------------------------
@@ -4731,6 +5001,8 @@ def handle_command(data):
         looper.delete_session(data.get('session_id', ''))
         emit('sessions_list', {'sessions': WebLooper.list_sessions()}, broadcast=True)
         return
+    elif command == 'set_scale':
+        looper.set_scale(data.get('root', 'A'), data.get('scale_type', 'minor'))
 
     # Broadcast updated state to all clients
     emit('update', looper.get_state(), broadcast=True)
