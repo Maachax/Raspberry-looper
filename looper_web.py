@@ -2852,6 +2852,50 @@ HTML_TEMPLATE = """
             font-size: 0.85em;
             text-align: center;
         }
+
+        /* -----------------------------------------------------------------
+         * TWO-VIEW MODE: PERFORMANCE vs EDIT
+         * ----------------------------------------------------------------- */
+
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .view-toggle-btn {
+            background: transparent;
+            border: 1px solid #4a5568;
+            color: #a0aec0;
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 0.5px;
+        }
+
+        .view-toggle-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        /* Hide edit-only elements in performance mode */
+        .performance-mode .edit-only {
+            display: none !important;
+        }
+
+        /* Bigger main buttons in performance mode */
+        .performance-mode .btn-rec,
+        .performance-mode .btn-overdub,
+        .performance-mode .btn-clear {
+            padding: 28px 40px;
+            font-size: 1.3em;
+        }
     </style>
 </head>
 <body>
@@ -2866,7 +2910,10 @@ HTML_TEMPLATE = """
     <div class="container">
         <div class="header">
             <h1>🎸 Guitar Looper</h1>
-            <div class="status-badge status-idle" id="statusBadge">Ready</div>
+            <div class="header-row">
+                <div class="status-badge status-idle" id="statusBadge">Ready</div>
+                <button class="view-toggle-btn" id="viewToggleBtn" onclick="toggleViewMode()">✏️ Edit</button>
+            </div>
         </div>
         
         <!-- Tempo Section -->
@@ -2892,11 +2939,11 @@ HTML_TEMPLATE = """
                     TAP<br>TEMPO
                 </button>
                 
-                <button class="detect-tempo-btn" id="detectTempoBtn" onclick="detectTempo()" disabled>
+                <button class="detect-tempo-btn edit-only" id="detectTempoBtn" onclick="detectTempo()" disabled>
                     🔍 DETECT<br>TEMPO
                 </button>
-                
-                <div class="tempo-options">
+
+                <div class="tempo-options edit-only">
                     <div class="tempo-option">
                         <label>BPM:</label>
                         <input type="number" id="bpmInput" min="30" max="300" value="120" 
@@ -2931,7 +2978,7 @@ HTML_TEMPLATE = """
             </div>
             
             <!-- Tempo Detection Result -->
-            <div class="tempo-detect-result" id="tempoDetectResult">
+            <div class="tempo-detect-result edit-only" id="tempoDetectResult">
                 <div class="detect-result-header">
                     <span class="detect-result-bpm" id="detectedBpm">-- BPM</span>
                     <span class="detect-result-confidence" id="detectedConfidence">Confidence: --%</span>
@@ -2971,7 +3018,7 @@ HTML_TEMPLATE = """
         </div>
         
         <!-- Trim Editor Section -->
-        <div class="trim-section" id="trimSection">
+        <div class="trim-section edit-only" id="trimSection">
             <div class="trim-header" onclick="toggleTrimEditor()">
                 <span class="trim-title">
                     <span>✂️ Trim Editor</span>
@@ -3035,7 +3082,7 @@ HTML_TEMPLATE = """
         </div>
         
         <!-- Export Section -->
-        <div class="export-section" id="exportSection">
+        <div class="export-section edit-only" id="exportSection">
             <div class="export-header">
                 <span class="export-title">
                     <span>📥 Export</span>
@@ -3064,7 +3111,7 @@ HTML_TEMPLATE = """
             <div class="export-info" id="exportInfo">Duration: 0.0s | Est. size: ~0 KB</div>
         </div>
         
-        <div class="keyboard-hint">
+        <div class="keyboard-hint edit-only">
             <kbd>SPACE</kbd> Record / Stop / Overdub &nbsp;|&nbsp; <kbd>T</kbd> Tap tempo &nbsp;|&nbsp; <kbd>D</kbd> Detect tempo
         </div>
         
@@ -3095,7 +3142,7 @@ HTML_TEMPLATE = """
 
         <div class="scenes-section">
             <div class="scenes-title">Scenes</div>
-            <div class="save-scene-row">
+            <div class="save-scene-row edit-only">
                 <input type="text" id="sceneNameInput" class="scene-name-input"
                        placeholder="Scene name..."
                        onkeydown="if(event.key==='Enter') saveScene()" />
@@ -3104,7 +3151,7 @@ HTML_TEMPLATE = """
             <div id="scenesList">
                 <div class="scenes-empty">No scenes saved yet</div>
             </div>
-            <div class="collapse-controls">
+            <div class="collapse-controls edit-only">
                 <div class="collapse-row">
                     <label class="toggle-switch">
                         <input type="checkbox" id="collapseToggle"
@@ -3121,7 +3168,7 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <div class="sessions-section">
+        <div class="sessions-section edit-only">
             <div class="sessions-title">Sessions</div>
             <div class="save-scene-row">
                 <input type="text" id="sessionNameInput" class="scene-name-input"
@@ -3134,7 +3181,7 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <div class="stats" id="stats"></div>
+        <div class="stats edit-only" id="stats"></div>
     </div>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
@@ -4344,7 +4391,7 @@ HTML_TEMPLATE = """
                             </button>
                             <span class="layer-status">${layer.is_playing ? '▶️' : '⏸️'}</span>
                         </div>
-                        <div class="color-swatches">
+                        <div class="color-swatches edit-only">
                             ${LAYER_COLORS.map(c => `
                                 <div class="color-swatch ${c === layer.color ? 'active' : ''}"
                                      style="background: ${c}"
@@ -4451,9 +4498,34 @@ HTML_TEMPLATE = """
         }
         
         // =================================================================
+        // VIEW MODE
+        // =================================================================
+
+        let performanceMode = localStorage.getItem('looper_view') !== 'edit';
+
+        function toggleViewMode() {
+            performanceMode = !performanceMode;
+            applyViewMode();
+            localStorage.setItem('looper_view', performanceMode ? 'perform' : 'edit');
+        }
+
+        function applyViewMode() {
+            const btn = document.getElementById('viewToggleBtn');
+            if (performanceMode) {
+                document.body.classList.add('performance-mode');
+                btn.textContent = '✏️ Edit';
+            } else {
+                document.body.classList.remove('performance-mode');
+                btn.textContent = '▶ Perform';
+            }
+        }
+
+        applyViewMode();
+
+        // =================================================================
         // INITIALIZATION
         // =================================================================
-        
+
         connect();
         
         // Poll for UI updates (progress bar + level meter)
