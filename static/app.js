@@ -1449,10 +1449,10 @@
             const btn = document.getElementById('viewToggleBtn');
             if (performanceMode) {
                 document.body.classList.add('performance-mode');
-                btn.textContent = '✏️ Edit';
+                btn.textContent = 'Edit';
             } else {
                 document.body.classList.remove('performance-mode');
-                btn.textContent = '▶ Perform';
+                btn.textContent = 'Perform';
             }
         }
 
