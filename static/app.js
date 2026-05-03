@@ -481,6 +481,7 @@
 
             socket.on('session_loaded', (result) => {
                 if (!result.success) alert('Load failed: ' + result.error);
+                clearScaleCandidates();
             });
 
             // Handle waveform data from server
