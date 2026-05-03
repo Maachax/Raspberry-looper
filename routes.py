@@ -167,6 +167,14 @@ def handle_detect_tempo():
         emit('tempo_detected', result)
 
 
+@socketio.on('detect_scale')
+def handle_detect_scale():
+    """Detect scale from recorded loop and send result to client."""
+    if looper:
+        result = looper.detect_scale()
+        emit('scale_detected', result)
+
+
 @socketio.on('list_sessions')
 def handle_list_sessions():
     emit('sessions_list', {'sessions': WebLooper.list_sessions()})
