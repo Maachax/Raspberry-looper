@@ -14,6 +14,25 @@ from config import (
     EXPORT_MP3_BITRATE, EXPORT_WAV_SAMPLE_WIDTH, SESSIONS_DIR, LAYER_COLORS,
 )
 
+NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+SCALE_TEMPLATES = {
+    'major':          [0, 2, 4, 5, 7, 9, 11],
+    'dorian':         [0, 2, 3, 5, 7, 9, 10],
+    'phrygian':       [0, 1, 3, 5, 7, 8, 10],
+    'lydian':         [0, 2, 4, 6, 7, 9, 11],
+    'mixolydian':     [0, 2, 4, 5, 7, 9, 10],
+    'minor':          [0, 2, 3, 5, 7, 8, 10],
+    'locrian':        [0, 1, 3, 5, 6, 8, 10],
+    'harmonic_minor': [0, 2, 3, 5, 7, 8, 11],
+    'melodic_minor':  [0, 2, 3, 5, 7, 9, 11],
+    'pent_major':     [0, 2, 4, 7, 9],
+    'pent_minor':     [0, 3, 5, 7, 10],
+    'blues':          [0, 3, 5, 6, 7, 10],
+    'diminished':     [0, 2, 3, 5, 6, 8, 9, 11],
+    'whole_tone':     [0, 2, 4, 6, 8, 10],
+}
+
 # Optional: librosa for tempo detection
 try:
     import librosa
@@ -996,7 +1015,66 @@ class WebLooper:
                 'bpm': 0,
                 'confidence': 0
             }
-    
+
+    def detect_scale(self) -> dict:
+        """
+        Detect scale from the master loop using onset-weighted chroma analysis.
+        Returns dict with success flag and top 5 scale candidates ranked by fit.
+        """
+        if not LIBROSA_AVAILABLE:
+            return {'success': False, 'error': 'librosa not installed', 'candidates': []}
+
+        with self.lock:
+            if len(self.layers) == 0 or self.master_length == 0:
+                return {'success': False, 'error': 'No audio recorded', 'candidates': []}
+            audio = self.layers[0].buffer[:self.master_length].copy()
+
+        try:
+            audio_64 = audio.astype(np.float64)
+
+            onset_env = librosa.onset.onset_strength(y=audio_64, sr=SAMPLE_RATE)
+            chroma = librosa.feature.chroma_stft(y=audio_64, sr=SAMPLE_RATE)
+
+            # Weight each chroma frame by its onset strength, then average
+            n_frames = min(len(onset_env), chroma.shape[1])
+            weights = onset_env[:n_frames]
+            weighted_sum = weights.sum()
+            if weighted_sum > 0:
+                chroma_vec = (chroma[:, :n_frames] * weights).sum(axis=1) / weighted_sum
+            else:
+                chroma_vec = chroma.mean(axis=1)
+
+            total = chroma_vec.sum()
+            if total <= 0:
+                return {'success': False, 'error': 'No pitched content detected', 'candidates': []}
+            chroma_norm = chroma_vec / total
+
+            # Score all 14 × 12 = 168 candidates
+            candidates = []
+            for root_idx, root_name in enumerate(NOTE_NAMES):
+                for scale_type, intervals in SCALE_TEMPLATES.items():
+                    pitch_classes = [(root_idx + iv) % 12 for iv in intervals]
+                    # Give extra weight to the root note in the scale
+                    score = float(chroma_norm[root_idx]) * 2.0  # root note has 2x weight
+                    score += sum(float(chroma_norm[pc]) for pc in pitch_classes if pc != root_idx)
+                    candidates.append({'root': root_name, 'scale_type': scale_type, '_score': score})
+
+            candidates.sort(key=lambda c: c['_score'], reverse=True)
+            top5 = candidates[:5]
+
+            best = top5[0]['_score'] if top5[0]['_score'] > 0 else 1.0
+            result_candidates = [
+                {'root': c['root'], 'scale_type': c['scale_type'], 'score': round(c['_score'] / best * 100)}
+                for c in top5
+            ]
+
+            print(f"✓ Scale detected: {result_candidates[0]['root']} {result_candidates[0]['scale_type']} ({result_candidates[0]['score']}%)")
+            return {'success': True, 'candidates': result_candidates}
+
+        except Exception as e:
+            print(f"✗ Scale detection failed: {e}")
+            return {'success': False, 'error': str(e), 'candidates': []}
+
     # -------------------------------------------------------------------------
     # EXPORT FUNCTIONS
     # -------------------------------------------------------------------------
