@@ -42,14 +42,36 @@
         // Open string notes in semitones from C: Low E, A, D, G, B, High e
         const OPEN_STRINGS = [4, 9, 2, 7, 11, 4];
         const SCALE_INTERVALS = {
-            'minor':      [0, 2, 3, 5, 7, 8, 10],
-            'major':      [0, 2, 4, 5, 7, 9, 11],
-            'pent_minor': [0, 3, 5, 7, 10],
-            'pent_major': [0, 2, 4, 7, 9],
-            'blues':      [0, 3, 5, 6, 7, 10],
-            'dorian':     [0, 2, 3, 5, 7, 9, 10],
-            'mixolydian': [0, 2, 4, 5, 7, 9, 10],
-            'phrygian':   [0, 1, 3, 5, 7, 8, 10],
+            'minor':          [0, 2, 3, 5, 7, 8, 10],
+            'major':          [0, 2, 4, 5, 7, 9, 11],
+            'dorian':         [0, 2, 3, 5, 7, 9, 10],
+            'phrygian':       [0, 1, 3, 5, 7, 8, 10],
+            'lydian':         [0, 2, 4, 6, 7, 9, 11],
+            'mixolydian':     [0, 2, 4, 5, 7, 9, 10],
+            'locrian':        [0, 1, 3, 5, 6, 8, 10],
+            'harmonic_minor': [0, 2, 3, 5, 7, 8, 11],
+            'melodic_minor':  [0, 2, 3, 5, 7, 9, 11],
+            'pent_major':     [0, 2, 4, 7, 9],
+            'pent_minor':     [0, 3, 5, 7, 10],
+            'blues':          [0, 3, 5, 6, 7, 10],
+            'diminished':     [0, 2, 3, 5, 6, 8, 9, 11],
+            'whole_tone':     [0, 2, 4, 6, 8, 10],
+        };
+        const SCALE_LABELS = {
+            'minor':          'Minor',
+            'major':          'Major',
+            'dorian':         'Dorian',
+            'phrygian':       'Phrygian',
+            'lydian':         'Lydian',
+            'mixolydian':     'Mixolydian',
+            'locrian':        'Locrian',
+            'harmonic_minor': 'Harm. Minor',
+            'melodic_minor':  'Mel. Minor',
+            'pent_major':     'Pent. Major',
+            'pent_minor':     'Pent. Minor',
+            'blues':          'Blues',
+            'diminished':     'Diminished',
+            'whole_tone':     'Whole Tone',
         };
 
         let scaleRoot = 'A';
