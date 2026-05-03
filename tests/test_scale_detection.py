@@ -54,3 +54,14 @@ def test_detect_scale_fails_gracefully_with_no_audio():
     result = looper.detect_scale()
     assert result['success'] is False
     assert result['candidates'] == []
+
+
+def test_detect_scale_fails_gracefully_with_silence():
+    """Silent buffer should return success=False."""
+    looper = WebLooper()
+    n = int(SAMPLE_RATE * 2.0)
+    looper.layers = [LoopLayer(0, "Master", np.zeros(n, dtype=np.float32))]
+    looper.master_length = n
+    result = looper.detect_scale()
+    assert result['success'] is False
+    assert result['candidates'] == []

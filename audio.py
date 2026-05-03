@@ -1054,10 +1054,11 @@ class WebLooper:
             for root_idx, root_name in enumerate(NOTE_NAMES):
                 for scale_type, intervals in SCALE_TEMPLATES.items():
                     pitch_classes = [(root_idx + iv) % 12 for iv in intervals]
-                    # Give extra weight to the root note in the scale
-                    score = float(chroma_norm[root_idx]) * 2.0  # root note has 2x weight
-                    score += sum(float(chroma_norm[pc]) for pc in pitch_classes if pc != root_idx)
-                    candidates.append({'root': root_name, 'scale_type': scale_type, '_score': score})
+                    # Give extra weight to the root note in the scale, then normalize by scale size
+                    score_val = (float(chroma_norm[root_idx]) * 2.0
+                                 + sum(float(chroma_norm[pc]) for pc in pitch_classes if pc != root_idx))
+                    adjusted = score_val / (len(intervals) + 1)
+                    candidates.append({'root': root_name, 'scale_type': scale_type, '_score': adjusted})
 
             candidates.sort(key=lambda c: c['_score'], reverse=True)
             top5 = candidates[:5]
@@ -1408,6 +1409,8 @@ class WebLooper:
             collapse_enabled = self.collapse_enabled
             collapse_scene_id = self.collapse_scene_id
             collapse_timeout = self.collapse_timeout
+            scale_root = self.scale_root
+            scale_type = self.scale_type
         
         # Compute derived values WITHOUT lock
         position_ratio = 0.0
@@ -1486,8 +1489,8 @@ class WebLooper:
                 'timeout': collapse_timeout,
             },
             'scale': {
-                'root': self.scale_root,
-                'scale_type': self.scale_type,
+                'root': scale_root,
+                'scale_type': scale_type,
             },
         }
     
