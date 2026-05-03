@@ -151,13 +151,15 @@
             }
 
             const container = document.getElementById('scaleCandidates');
-            container.innerHTML = result.candidates.map(c => {
+            container.innerHTML = '';
+            result.candidates.forEach(c => {
                 const label = SCALE_LABELS[c.scale_type] || c.scale_type;
-                return `<button class="scale-candidate-chip"
-                    onclick="applyScaleCandidate('${c.root}', '${c.scale_type}')">
-                    ${c.root} ${label} <span class="chip-score">${c.score}%</span>
-                </button>`;
-            }).join('');
+                const btn = document.createElement('button');
+                btn.className = 'scale-candidate-chip';
+                btn.innerHTML = `${c.root} ${label} <span class="chip-score">${c.score}%</span>`;
+                btn.addEventListener('click', () => applyScaleCandidate(c.root, c.scale_type));
+                container.appendChild(btn);
+            });
             container.classList.add('visible');
         }
 
