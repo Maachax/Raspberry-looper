@@ -95,12 +95,14 @@
             scaleRoot = note;
             updateScaleRootButtons();
             renderFretboard();
+            clearScaleCandidates();
             sendCommand('set_scale', { root: scaleRoot, scale_type: scaleType });
         }
 
         function setScaleType(type) {
             scaleType = type;
             renderFretboard();
+            clearScaleCandidates();
             sendCommand('set_scale', { root: scaleRoot, scale_type: scaleType });
         }
 
@@ -115,6 +117,64 @@
             const sel = document.getElementById('scaleTypeSelect');
             if (sel) sel.value = scaleType;
             renderFretboard();
+        }
+
+        // =================================================================
+        // SCALE DETECTION
+        // =================================================================
+
+        let isDetectingScale = false;
+
+        function detectScale() {
+            if (isDetectingScale) return;
+            if (serverState.state !== 'playing') {
+                alert('Record a loop first before detecting scale');
+                return;
+            }
+            isDetectingScale = true;
+            const btn = document.getElementById('detectScaleBtn');
+            btn.classList.add('detecting');
+            btn.textContent = '🔍 DETECTING...';
+            document.getElementById('scaleCandidates').classList.remove('visible');
+            socket.emit('detect_scale');
+        }
+
+        function handleScaleDetected(result) {
+            isDetectingScale = false;
+            const btn = document.getElementById('detectScaleBtn');
+            btn.classList.remove('detecting');
+            btn.textContent = '🔍 DETECT SCALE';
+
+            if (!result.success || !result.candidates || result.candidates.length === 0) {
+                alert(result.error || 'Scale detection failed');
+                return;
+            }
+
+            const container = document.getElementById('scaleCandidates');
+            container.innerHTML = result.candidates.map(c => {
+                const label = SCALE_LABELS[c.scale_type] || c.scale_type;
+                return `<button class="scale-candidate-chip"
+                    onclick="applyScaleCandidate('${c.root}', '${c.scale_type}')">
+                    ${c.root} ${label} <span class="chip-score">${c.score}%</span>
+                </button>`;
+            }).join('');
+            container.classList.add('visible');
+        }
+
+        function applyScaleCandidate(root, type) {
+            scaleRoot = root;
+            scaleType = type;
+            updateScaleRootButtons();
+            const sel = document.getElementById('scaleTypeSelect');
+            if (sel) sel.value = scaleType;
+            renderFretboard();
+            sendCommand('set_scale', { root: scaleRoot, scale_type: scaleType });
+            clearScaleCandidates();
+        }
+
+        function clearScaleCandidates() {
+            const el = document.getElementById('scaleCandidates');
+            if (el) el.classList.remove('visible');
         }
 
         function renderFretboard() {
@@ -399,7 +459,12 @@
             });
             
             socket.on('update', (data) => {
+                const prevState = serverState.state;
                 serverState = data;
+                if (prevState === 'playing' &&
+                    (data.state === 'idle' || data.state === 'recording_master')) {
+                    clearScaleCandidates();
+                }
                 updateUI();
             });
 
@@ -431,6 +496,10 @@
             // Handle tempo detection result
             socket.on('tempo_detected', (result) => {
                 handleTempoDetected(result);
+            });
+
+            socket.on('scale_detected', (result) => {
+                handleScaleDetected(result);
             });
         }
         
@@ -1331,6 +1400,12 @@
             const btnDetect = document.getElementById('detectTempoBtn');
             if (btnDetect) {
                 btnDetect.disabled = (state !== 'playing' || isDetecting);
+            }
+
+            // DETECT SCALE button - only enabled when playing
+            const btnDetectScale = document.getElementById('detectScaleBtn');
+            if (btnDetectScale) {
+                btnDetectScale.disabled = (state !== 'playing' || isDetectingScale);
             }
             
             // --- Layers List ---
