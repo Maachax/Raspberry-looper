@@ -20,7 +20,7 @@
 
     /* Layout */
     --topbar-h:     42px;
-    --footer-h:     84px;
+    --footer-h:     104px;
 }
 
 /* ==========================================================================
@@ -630,10 +630,10 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
    ========================================================================== */
 
 .btn {
-    padding: 10px 16px;
+    padding: 12px 20px;
     border-radius: 0;
     font-weight: 600;
-    font-size: 0.9em;
+    font-size: 1em;
     letter-spacing: 0.4px;
     transition: all 0.12s;
     border: 1px solid transparent;
@@ -641,8 +641,8 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 }
 
 .btn-small {
-    padding: 5px 10px;
-    font-size: 0.78em;
+    padding: 7px 12px;
+    font-size: 0.82em;
 }
 
 .btn-mute {
@@ -1820,11 +1820,12 @@ body.edit-mode .layer-expanded { display: flex; }
 
 .btn-rec {
     flex: 3;
-    padding: 14px 10px;
+    padding: 0;
+    min-height: 44px;
     background: var(--rec);
     color: #fff;
     font-weight: 700;
-    font-size: 13px;
+    font-size: 14px;
     letter-spacing: 1.5px;
     border: none;
     cursor: pointer;
@@ -1837,10 +1838,11 @@ body.edit-mode .layer-expanded { display: flex; }
 
 .btn-overdub {
     flex: 2;
-    padding: 14px 10px;
+    padding: 0;
+    min-height: 44px;
     background: transparent;
     color: var(--accent);
-    font-size: 11px;
+    font-size: 12px;
     border: 1px solid var(--accent);
     letter-spacing: 0.5px;
     cursor: pointer;
@@ -1857,10 +1859,11 @@ body.edit-mode .layer-expanded { display: flex; }
 
 .btn-clear {
     flex: 1;
-    padding: 14px 10px;
+    padding: 0;
+    min-height: 44px;
     background: transparent;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     border: 1px solid var(--border);
     cursor: pointer;
 }
