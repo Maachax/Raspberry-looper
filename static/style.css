@@ -20,7 +20,7 @@
 
     /* Layout */
     --topbar-h:     42px;
-    --footer-h:     104px;
+    --footer-h:     58px;
 }
 
 /* ==========================================================================
@@ -1873,6 +1873,28 @@ body.edit-mode .layer-expanded { display: flex; }
 @keyframes pulse {
     from { opacity: 1; }
     to   { opacity: 0.55; }
+}
+
+/* ── Meters side panel ── */
+.meters-body {
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.meter-row-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.meter-section-label {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    width: 36px;
 }
 
 /* ==========================================================================

@@ -3,7 +3,7 @@
         // =================================================================
         
         let socket = null;
-        let activeSidePanel = null; // 'scale' | null
+        let activeSidePanel = null; // 'scale' | 'meters' | null
         let serverState = {
             state: 'idle',
             master_duration: 0,

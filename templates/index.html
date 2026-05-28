@@ -76,6 +76,8 @@
         <div class="side-strip">
             <button class="side-icon" id="sideBtnScale" data-panel="scale"
                     onclick="setSidePanel('scale')" title="Scale / Fretboard">♩</button>
+            <button class="side-icon" id="sideBtnMeters" data-panel="meters"
+                    onclick="setSidePanel('meters')" title="Input / Boost">dB</button>
             <button class="side-icon side-icon-stub" title="FX (coming soon)">FX</button>
             <button class="side-icon side-icon-stub" title="Art (coming soon)">✦</button>
         </div>
@@ -121,6 +123,31 @@
                 <button class="detect-scale-btn" id="detectScaleBtn"
                         onclick="detectScale()" disabled>DETECT SCALE</button>
                 <div class="scale-candidates" id="scaleCandidates"></div>
+            </div>
+
+            <!-- METERS panel -->
+            <div class="side-panel" id="panelMeters">
+                <div class="panel-header accent-primary">
+                    <span>METERS</span>
+                </div>
+                <div class="meters-body">
+                    <div class="meter-row-section">
+                        <span class="meter-section-label mono">IN</span>
+                        <div class="level-meter-bar-bg">
+                            <div class="level-meter-bar" id="levelMeterBar"></div>
+                            <div class="level-meter-peak" id="levelMeterPeak"></div>
+                        </div>
+                        <span class="level-meter-db mono" id="levelMeterDb">-∞</span>
+                        <span class="clip-indicator" id="clipIndicator"></span>
+                    </div>
+                    <div class="meter-row-section">
+                        <span class="meter-section-label mono">BOOST</span>
+                        <input type="range" class="boost-slider" id="outputGainSlider"
+                               min="0.25" max="4" step="0.05" value="1"
+                               oninput="setOutputGain(this.value)">
+                        <span class="boost-value mono" id="outputGainValue">1.0×</span>
+                    </div>
+                </div>
             </div>
 
         </div>
@@ -337,21 +364,6 @@
      FOOTER
 ════════════════════════════════════════════════ -->
 <footer class="bottom-bar">
-    <div class="footer-meters">
-        <span class="meter-label mono">IN</span>
-        <div class="level-meter-bar-bg">
-            <div class="level-meter-bar" id="levelMeterBar"></div>
-            <div class="level-meter-peak" id="levelMeterPeak"></div>
-        </div>
-        <span class="level-meter-db mono" id="levelMeterDb">-∞</span>
-        <span class="clip-indicator" id="clipIndicator"></span>
-        <span class="meter-sep">|</span>
-        <span class="meter-label mono">BOOST</span>
-        <input type="range" class="boost-slider" id="outputGainSlider"
-               min="0.25" max="4" step="0.05" value="1"
-               oninput="setOutputGain(this.value)">
-        <span class="boost-value mono" id="outputGainValue">1.0×</span>
-    </div>
     <div class="footer-transport">
         <button class="btn btn-rec" id="btnRec" onclick="handleRec()">● REC</button>
         <button class="btn btn-overdub" id="btnOverdub"
