@@ -211,20 +211,20 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .time-display {
     font-size: 0.82em;
-    color: var(--text-dim);
+    color: var(--text-muted);
     margin-bottom: 8px;
     font-variant-numeric: tabular-nums;
 }
 
 .time-display .current { color: var(--text); font-weight: 600; }
 .time-display .separator { color: var(--text-muted); margin: 0 2px; }
-.time-display .total { color: var(--text-dim); }
+.time-display .total { color: var(--text-muted); }
 .time-display .unit { color: var(--text-muted); margin-left: 2px; font-size: 0.9em; }
 
 .progress-bar-container {
     position: relative;
     height: 6px;
-    background: var(--surface-2);
+    background: var(--surface);
     border-radius: 3px;
     overflow: hidden;
 }
@@ -292,9 +292,9 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .tap-tempo-btn {
     flex: 1;
     padding: 12px 8px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
     color: var(--text);
     font-size: 0.85em;
     font-weight: 700;
@@ -318,7 +318,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .toggle-label {
     font-size: 0.78em;
-    color: var(--text-dim);
+    color: var(--text-muted);
     letter-spacing: 0.3px;
 }
 
@@ -341,14 +341,14 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     align-items: center;
     gap: 7px;
     font-size: 0.82em;
-    color: var(--text-dim);
+    color: var(--text-muted);
 }
 
 .tempo-option input[type="number"],
 .tempo-option select {
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
     color: var(--text);
     padding: 4px 8px;
     width: 70px;
@@ -359,10 +359,10 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .detect-tempo-btn {
     width: 100%;
     padding: 9px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    color: var(--text-dim);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
+    color: var(--text-muted);
     font-size: 0.82em;
     font-weight: 600;
     letter-spacing: 0.5px;
@@ -375,8 +375,8 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .tempo-detect-result {
     display: none;
     margin-top: 10px;
-    background: var(--surface-2);
-    border-radius: var(--radius);
+    background: var(--surface);
+    border-radius: 0;
     padding: 12px;
 }
 
@@ -395,12 +395,12 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .detect-result-confidence {
     font-size: 0.78em;
-    color: var(--text-dim);
+    color: var(--text-muted);
 }
 
 .confidence-bar {
     height: 4px;
-    background: var(--border-strong);
+    background: var(--border-dim);
     border-radius: 2px;
     margin-bottom: 10px;
 }
@@ -422,7 +422,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     padding: 7px;
     background: var(--play);
     color: #081a0e;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     font-weight: 700;
     font-size: 0.82em;
 }
@@ -430,9 +430,9 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .btn-dismiss {
     padding: 7px 14px;
     background: transparent;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    color: var(--text-dim);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
+    color: var(--text-muted);
     font-size: 0.82em;
 }
 
@@ -464,7 +464,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .master-volume-value {
     font-size: 0.82em;
-    color: var(--text-dim);
+    color: var(--text-muted);
     width: 42px;
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -479,16 +479,16 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .string-mode-toggle {
     display: flex;
     gap: 2px;
-    background: var(--surface-2);
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     padding: 2px;
 }
 .string-mode-btn {
     padding: 3px 8px;
     background: transparent;
     border: none;
-    border-radius: calc(var(--radius-sm) - 2px);
+    border-radius: calc(0 - 2px);
     color: var(--text-muted);
     font-size: 0.75em;
     font-weight: 600;
@@ -499,11 +499,11 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .string-mode-btn.active { background: var(--surface-3, var(--border)); color: var(--text); }
 
 .scale-type-select {
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
     color: var(--text);
     padding: 5px 10px;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     font-size: 0.82em;
     cursor: pointer;
     outline: none;
@@ -519,21 +519,21 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     flex: 1;
     min-width: 0;
     padding: 8px 2px;
-    background: var(--surface-2);
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     color: var(--text-muted);
     font-size: 0.76em;
     font-weight: 600;
     text-align: center;
     transition: all 0.12s;
 }
-.scale-root-btn:hover { color: var(--text); background: var(--surface-2); border-color: var(--border-strong); }
-.scale-root-btn.active { background: var(--armed); border-color: var(--armed); color: #1a1000; font-weight: 700; }
+.scale-root-btn:hover { color: var(--text); background: var(--surface); border-color: var(--border-dim); }
+.scale-root-btn.active { background: #f59e42; border-color: #f59e42; color: #1a1000; font-weight: 700; }
 
 .fretboard-container {
     background: #0a0f1a;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     overflow: hidden;
     padding: 4px 4px 2px;
 }
@@ -545,8 +545,8 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .layers-section { display: none; }
 
 .layer {
-    background: var(--surface-2);
-    border-radius: var(--radius);
+    background: var(--surface);
+    border-radius: 0;
     border-left: 3px solid transparent;
     padding: 12px;
     margin-bottom: 8px;
@@ -619,7 +619,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .volume-value {
     font-size: 0.78em;
-    color: var(--text-dim);
+    color: var(--text-muted);
     width: 34px;
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -630,10 +630,10 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
    ========================================================================== */
 
 .btn {
-    padding: 8px 14px;
-    border-radius: var(--radius-sm);
+    padding: 10px 16px;
+    border-radius: 0;
     font-weight: 600;
-    font-size: 0.82em;
+    font-size: 0.9em;
     letter-spacing: 0.4px;
     transition: all 0.12s;
     border: 1px solid transparent;
@@ -647,11 +647,11 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .btn-mute {
     background: var(--surface);
-    border-color: var(--border-strong);
-    color: var(--text-dim);
+    border-color: var(--border-dim);
+    color: var(--text-muted);
 }
-.btn-mute:hover { border-color: var(--armed); color: var(--armed); }
-.btn-mute.muted { background: rgba(245, 158, 66, 0.15); border-color: var(--armed); color: var(--armed); }
+.btn-mute:hover { border-color: #f59e42; color: #f59e42; }
+.btn-mute.muted { background: rgba(245, 158, 66, 0.15); border-color: #f59e42; color: #f59e42; }
 
 .btn-delete {
     background: transparent;
@@ -663,8 +663,8 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .btn-auto-trim, .btn-trim-reset, .btn-trim {
     background: var(--surface);
-    border-color: var(--border-strong);
-    color: var(--text-dim);
+    border-color: var(--border-dim);
+    color: var(--text-muted);
 }
 .btn-auto-trim:hover, .btn-trim-reset:hover { border-color: var(--accent); color: var(--text); }
 .btn-trim { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -682,9 +682,9 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .scene-name-input {
     flex: 1;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
     color: var(--text);
     padding: 7px 10px;
     font-size: 0.88em;
@@ -700,7 +700,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     font-weight: 700;
     letter-spacing: 0.5px;
     padding: 7px 14px;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     white-space: nowrap;
     transition: opacity 0.12s;
 }
@@ -717,7 +717,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .scene-item.pending {
     background: rgba(88, 101, 242, 0.08);
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     padding: 9px 8px;
 }
 
@@ -751,7 +751,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     border: 1px solid rgba(43, 202, 110, 0.35);
     font-size: 0.75em;
     padding: 4px 10px;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     font-weight: 600;
 }
 .btn-load-scene:hover { background: rgba(43, 202, 110, 0.2); }
@@ -762,17 +762,17 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     border: 1px solid rgba(232, 66, 74, 0.3);
     font-size: 0.75em;
     padding: 4px 8px;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
 }
 .btn-delete-scene:hover, .btn-delete-session:hover { color: var(--rec); border-color: var(--rec); }
 
 .btn-idle-scene {
     background: transparent;
-    border: 1px solid var(--border-strong);
+    border: 1px solid var(--border-dim);
     color: var(--text-muted);
     font-size: 0.78em;
     padding: 4px 8px;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
 }
 .btn-idle-scene:hover { color: var(--play); border-color: var(--play); }
 
@@ -797,14 +797,14 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .collapse-label {
     font-size: 0.82em;
-    color: var(--text-dim);
+    color: var(--text-muted);
 }
 
 .collapse-timeout-input {
     width: 48px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
     color: var(--text);
     padding: 3px 6px;
     font-size: 0.82em;
@@ -845,7 +845,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .trim-disabled-badge {
     font-size: 0.75em;
     color: var(--text-muted);
-    background: var(--surface-2);
+    background: var(--surface);
     padding: 3px 8px;
     border-radius: 10px;
     font-weight: 400;
@@ -865,7 +865,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .waveform-container {
     position: relative;
     background: var(--bg);
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     height: 110px;
     margin-bottom: 14px;
     overflow: hidden;
@@ -945,20 +945,20 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     font-size: 0.82em;
 }
 
-.trim-time-input label { color: var(--text-dim); }
+.trim-time-input label { color: var(--text-muted); }
 
 .trim-time-input input[type="number"] {
     width: 62px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
     color: var(--text);
     padding: 4px 6px;
     outline: none;
     text-align: right;
 }
 
-.trim-time-input span { color: var(--text-dim); }
+.trim-time-input span { color: var(--text-muted); }
 
 .trim-duration { color: var(--text); font-weight: 600; }
 
@@ -967,7 +967,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     align-items: center;
     gap: 6px;
     font-size: 0.82em;
-    color: var(--text-dim);
+    color: var(--text-muted);
 }
 
 .trim-actions {
@@ -997,11 +997,11 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .export-mode-select,
 .export-format-select {
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
     color: var(--text);
     padding: 5px 8px;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     font-size: 0.82em;
     outline: none;
 }
@@ -1010,7 +1010,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     background: var(--accent);
     color: #fff;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     padding: 6px 14px;
     font-size: 0.82em;
     font-weight: 700;
@@ -1029,7 +1029,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 .export-warning {
     font-size: 0.8em;
-    color: var(--armed);
+    color: #f59e42;
     margin-bottom: 6px;
 }
 
@@ -1070,7 +1070,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     border: 1px solid rgba(43, 202, 110, 0.35);
     font-size: 0.75em;
     padding: 4px 10px;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     font-weight: 600;
     cursor: pointer;
 }
@@ -1089,13 +1089,13 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 
 kbd {
     display: inline-block;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
     border-radius: 4px;
     padding: 1px 5px;
     font-size: 0.9em;
     font-family: inherit;
-    color: var(--text-dim);
+    color: var(--text-muted);
 }
 
 .stats {
@@ -1112,7 +1112,7 @@ kbd {
 .level-meter-bar-bg {
     flex: 1;
     height: 6px;
-    background: var(--surface-2);
+    background: var(--surface);
     border-radius: 3px;
     position: relative;
     overflow: visible;
@@ -1120,7 +1120,7 @@ kbd {
 
 .level-meter-bar {
     height: 100%;
-    background: linear-gradient(90deg, var(--play) 0%, #86efac 70%, var(--armed) 88%, var(--rec) 100%);
+    background: linear-gradient(90deg, var(--play) 0%, #86efac 70%, #f59e42 88%, var(--rec) 100%);
     border-radius: 3px;
     transition: width 0.05s linear;
     width: 0%;
@@ -1158,7 +1158,7 @@ kbd {
     flex: 3;
     padding: 15px 12px;
     background: var(--rec);
-    border-radius: var(--radius);
+    border-radius: 0;
     color: #fff;
     font-size: 1em;
     font-weight: 800;
@@ -1178,10 +1178,10 @@ kbd {
 .btn-overdub {
     flex: 2;
     padding: 15px 8px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    color: var(--text-dim);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
+    color: var(--text-muted);
     font-size: 0.88em;
     font-weight: 700;
     letter-spacing: 0.8px;
@@ -1191,8 +1191,8 @@ kbd {
 .btn-overdub:not(:disabled):hover { border-color: var(--accent); color: var(--text); }
 .btn-overdub:disabled { opacity: 0.35; cursor: default; }
 .btn-overdub.armed {
-    border-color: var(--armed);
-    color: var(--armed);
+    border-color: #f59e42;
+    color: #f59e42;
     animation: pulse 1s infinite;
 }
 
@@ -1200,8 +1200,8 @@ kbd {
     flex: 1;
     padding: 15px 8px;
     background: transparent;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
     color: var(--text-muted);
     font-size: 1em;
     transition: all 0.12s;
@@ -1231,9 +1231,8 @@ kbd {
 .toggle-slider {
     position: absolute;
     inset: 0;
-    background: var(--surface-2);
-    border-radius: 20px;
-    border: 1px solid var(--border-strong);
+    background: var(--border);
+    border: 1px solid var(--border-dim);
     transition: background 0.2s;
 }
 
@@ -1244,8 +1243,7 @@ kbd {
     height: 14px;
     left: 2px;
     top: 2px;
-    background: var(--text-dim);
-    border-radius: 50%;
+    background: var(--text-muted);
     transition: all 0.2s;
 }
 
@@ -1290,7 +1288,7 @@ kbd {
 
 .countdown-bpm {
     font-size: 1.3rem;
-    color: var(--text-dim);
+    color: var(--text-muted);
     margin-top: 16px;
 }
 
@@ -1322,10 +1320,10 @@ kbd {
     width: 100%;
     margin-top: 10px;
     padding: 9px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    color: var(--text-dim);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
+    color: var(--text-muted);
     font-size: 0.82em;
     font-weight: 600;
     letter-spacing: 0.5px;
@@ -1333,7 +1331,7 @@ kbd {
 }
 .detect-scale-btn:not(:disabled):hover { color: var(--text); border-color: var(--accent); }
 .detect-scale-btn:disabled { opacity: 0.4; cursor: default; }
-.detect-scale-btn.detecting { color: var(--armed); border-color: var(--armed); }
+.detect-scale-btn.detecting { color: #f59e42; border-color: #f59e42; }
 
 .scale-candidates {
     display: none;
@@ -1345,10 +1343,10 @@ kbd {
 
 .scale-candidate-chip {
     padding: 5px 10px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    color: var(--text-dim);
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
+    color: var(--text-muted);
     font-size: 0.78em;
     font-weight: 600;
     cursor: pointer;
@@ -1822,11 +1820,11 @@ body.edit-mode .layer-expanded { display: flex; }
 
 .btn-rec {
     flex: 3;
-    padding: 10px;
+    padding: 14px 10px;
     background: var(--rec);
     color: #fff;
     font-weight: 700;
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: 1.5px;
     border: none;
     cursor: pointer;
@@ -1839,10 +1837,10 @@ body.edit-mode .layer-expanded { display: flex; }
 
 .btn-overdub {
     flex: 2;
-    padding: 10px;
+    padding: 14px 10px;
     background: transparent;
     color: var(--accent);
-    font-size: 10px;
+    font-size: 11px;
     border: 1px solid var(--accent);
     letter-spacing: 0.5px;
     cursor: pointer;
@@ -1859,10 +1857,10 @@ body.edit-mode .layer-expanded { display: flex; }
 
 .btn-clear {
     flex: 1;
-    padding: 10px;
+    padding: 14px 10px;
     background: transparent;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 11px;
     border: 1px solid var(--border);
     cursor: pointer;
 }

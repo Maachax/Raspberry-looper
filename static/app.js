@@ -469,7 +469,6 @@
             
             socket.on('connect', () => {
                 console.log('✓ Connected');
-                document.getElementById('connectionStatus').textContent = '● Connected';
                 document.getElementById('connectionStatus').className = 'status-led led-play';
                 // Initialize audio context on first interaction
                 document.addEventListener('click', () => initAudio(), { once: true });
@@ -479,7 +478,6 @@
             
             socket.on('disconnect', () => {
                 console.log('✗ Disconnected');
-                document.getElementById('connectionStatus').textContent = '● Disconnected';
                 document.getElementById('connectionStatus').className = 'status-led';
             });
             
