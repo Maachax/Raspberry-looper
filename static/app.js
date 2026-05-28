@@ -3,6 +3,7 @@
         // =================================================================
         
         let socket = null;
+        let activeSidePanel = null; // 'scale' | null
         let serverState = {
             state: 'idle',
             master_duration: 0,
@@ -104,6 +105,8 @@
 
         function setScaleRoot(note) {
             scaleRoot = note;
+            const scaleRootDisplayEl = document.getElementById('scaleRootDisplay');
+            if (scaleRootDisplayEl) scaleRootDisplayEl.textContent = note;
             updateScaleRootButtons();
             renderFretboard();
             clearScaleCandidates();
@@ -123,6 +126,8 @@
             const newType = scaleData.scale_type || 'minor';
             if (newRoot === scaleRoot && newType === scaleType) return;
             scaleRoot = newRoot;
+            const scaleRootDisplayEl = document.getElementById('scaleRootDisplay');
+            if (scaleRootDisplayEl) scaleRootDisplayEl.textContent = newRoot;
             scaleType = newType;
             updateScaleRootButtons();
             const sel = document.getElementById('scaleTypeSelect');
@@ -191,6 +196,7 @@
         }
 
         function renderFretboard() {
+            if (activeSidePanel !== 'scale') return;
             const rootIdx = SCALE_NOTES.indexOf(scaleRoot);
             const intervals = new Set(SCALE_INTERVALS[scaleType] || []);
 
@@ -375,8 +381,10 @@
             sendCommand('set_bpm', { bpm: localBpm });
         }
         
-        function setBeatsPerBar(value) {
-            sendCommand('set_beats_per_bar', { beats: parseInt(value) });
+        function setBeatsPerBar(beats) {
+            sendCommand('set_beats_per_bar', { beats: parseInt(beats) });
+            const el = document.getElementById('topbarBeats');
+            if (el) el.textContent = beats;
         }
         
         function setQuantize(enabled) {
@@ -1309,31 +1317,46 @@
         function updateUI() {
             const state = serverState.state;
             
-            // --- Status Badge ---
-            const badge = document.getElementById('statusBadge');
-            badge.className = 'status-badge';
-            
-            switch (state) {
-                case 'idle':
-                    badge.textContent = 'Ready';
-                    badge.classList.add('status-idle');
-                    break;
-                case 'recording_master':
-                    badge.textContent = '● Recording';
-                    badge.classList.add('status-recording');
-                    break;
-                case 'playing':
-                    badge.textContent = '▶ Playing';
-                    badge.classList.add('status-playing');
-                    break;
-                case 'overdub_armed':
-                    badge.textContent = 'Waiting for loop start...';
-                    badge.classList.add('status-armed');
-                    break;
-                case 'recording_overdub':
-                    badge.textContent = '● Recording Overdub';
-                    badge.classList.add('status-recording');
-                    break;
+            // --- Topbar LED + state label ---
+            const led = document.getElementById('connectionStatus');
+            const topbarStateEl = document.getElementById('topbarState');
+            if (led && topbarStateEl) {
+                led.className = 'status-led';
+                topbarStateEl.className = 'topbar-state mono';
+
+                switch (state) {
+                    case 'idle':
+                        topbarStateEl.textContent = 'READY';
+                        break;
+                    case 'recording_master':
+                        led.classList.add('led-rec');
+                        topbarStateEl.classList.add('state-rec');
+                        topbarStateEl.textContent = 'REC';
+                        break;
+                    case 'playing':
+                        led.classList.add('led-play');
+                        topbarStateEl.classList.add('state-play');
+                        topbarStateEl.textContent = 'PLAYING';
+                        break;
+                    case 'overdub_armed':
+                        led.classList.add('led-armed');
+                        topbarStateEl.classList.add('state-armed');
+                        topbarStateEl.textContent = 'ARMED';
+                        break;
+                    case 'recording_overdub':
+                        led.classList.add('led-rec');
+                        topbarStateEl.classList.add('state-rec');
+                        topbarStateEl.textContent = 'OVERDUB';
+                        break;
+                }
+            }
+
+            // --- Topbar meta (scale · BPM) ---
+            const topbarMeta = document.getElementById('topbarMeta');
+            if (topbarMeta) {
+                const bpmDisplay = serverState.tempo ? Math.round(serverState.tempo.bpm) : '–';
+                const scaleLabel = `${scaleRoot} ${SCALE_LABELS[scaleType] || scaleType}`;
+                topbarMeta.textContent = `${scaleLabel} · ${bpmDisplay} BPM`;
             }
             
             // --- Tempo display (sync from server) ---
@@ -1363,18 +1386,15 @@
                 document.getElementById('outputGainValue').textContent = `${serverState.output_gain.toFixed(1)}×`;
             }
             
-            // --- Time Display ---
-            const timeDisplay = document.getElementById('timeDisplay');
-            let currentTime, totalTime;
-            
+            // --- Position display ---
+            const posLeft = document.getElementById('posLeft');
+            const posRight = document.getElementById('posRight');
             if (state === 'recording_master') {
-                currentTime = serverState.recording_time;
-                totalTime = currentTime;
-                timeDisplay.innerHTML = `<span class="current">${formatTime(currentTime)}</span><span class="unit">s</span>`;
+                if (posLeft) posLeft.textContent = formatTime(serverState.recording_time);
+                if (posRight) posRight.textContent = '…';
             } else {
-                currentTime = serverState.current_time;
-                totalTime = serverState.master_duration;
-                timeDisplay.innerHTML = `<span class="current">${formatTime(currentTime)}</span><span class="separator"> / </span><span class="total">${formatTime(totalTime)}</span><span class="unit">s</span>`;
+                if (posLeft) posLeft.textContent = formatTime(serverState.current_time);
+                if (posRight) posRight.textContent = formatTime(serverState.master_duration);
             }
             
             // --- Progress Bar ---
@@ -1444,53 +1464,42 @@
                 _lastLayersJson = _layersJson;
 
             if (serverState.layers.length === 0) {
-                layersList.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🎵</div>
-                        <p>No loops recorded yet</p>
-                    </div>
-                `;
+                layersList.innerHTML = '<div class="layers-empty">No loops yet</div>';
             } else {
-                layersList.innerHTML = serverState.layers.map(layer => `
-                    <div class="layer" style="border-left-color: ${layer.color}">
-                        <div class="layer-header">
-                            <button class="layer-name-btn ${layer.id === 0 ? 'master' : ''}"
-                                    style="color: ${layer.color}"
-                                    onclick="renameLayer(${layer.id}, '${layer.name.replace(/'/g, "\\'")}')">
-                                ${layer.name}
-                            </button>
-                            <span class="layer-status">${layer.is_playing ? '▶️' : '⏸️'}</span>
-                        </div>
-                        <div class="color-swatches edit-only">
-                            ${LAYER_COLORS.map(c => `
-                                <div class="color-swatch ${c === layer.color ? 'active' : ''}"
-                                     style="background: ${c}"
-                                     onclick="setLayerColor(${layer.id}, '${c}')">
-                                </div>
-                            `).join('')}
-                        </div>
-                        <div class="layer-controls" style="margin-top: 10px">
-                            <button class="btn btn-small btn-mute ${!layer.is_playing ? 'muted' : ''}"
-                                    onclick="toggleLayer(${layer.id})">
-                                ${layer.is_playing ? 'MUTE' : 'UNMUTE'}
-                            </button>
-                            <div class="volume-control">
-                                <span>🔊</span>
-                                <input type="range"
-                                       class="volume-slider"
-                                       min="0" max="1" step="0.01"
-                                       value="${layer.volume}"
-                                       oninput="setVolume(${layer.id}, this.value)">
-                                <span class="volume-value">${Math.round(layer.volume * 100)}%</span>
+                layersList.innerHTML = serverState.layers.map(layer => {
+                    const vol = Math.round((layer.volume ?? 1) * 100);
+                    return `
+                        <div class="layer-row ${layer.is_playing ? '' : 'muted'}"
+                             style="border-left-color: ${layer.color}"
+                             onclick="document.body.classList.contains('edit-mode') && toggleLayer(${layer.id})">
+                            <span class="layer-name" style="color: ${layer.color}">${layer.name}</span>
+                            <div class="layer-vol-bar-bg">
+                                <div class="layer-vol-bar" style="width:${vol}%; background:${layer.color}"></div>
                             </div>
-                            ${layer.id > 0 ? `
-                                <button class="btn btn-small btn-delete" onclick="deleteLayer(${layer.id})">
-                                    ✕
-                                </button>
-                            ` : ''}
+                            <span class="layer-vol-num">${vol}</span>
                         </div>
-                    </div>
-                `).join('');
+                        <div class="layer-expanded" style="border-left-color: ${layer.color}">
+                            <div class="color-swatches">
+                                ${LAYER_COLORS.map(c => `
+                                    <div class="color-swatch ${c === layer.color ? 'active' : ''}"
+                                         style="background: ${c}"
+                                         onclick="setLayerColor(${layer.id}, '${c}')"></div>
+                                `).join('')}
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <span style="font-size:9px;color:var(--text-muted)">Vol</span>
+                                <input type="range" min="0" max="1" step="0.01"
+                                       value="${layer.volume ?? 1}"
+                                       oninput="setLayerVolume(${layer.id}, this.value)"
+                                       style="flex:1">
+                                <button class="btn btn-small btn-mute ${!layer.is_playing ? 'muted' : ''}"
+                                        onclick="toggleLayer(${layer.id})">
+                                    ${layer.is_playing ? 'MUTE' : 'UNMUTE'}
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
             }
             } // end layers render guard
 
@@ -1586,15 +1595,45 @@
         function applyViewMode() {
             const btn = document.getElementById('viewToggleBtn');
             if (performanceMode) {
-                document.body.classList.add('performance-mode');
-                btn.textContent = 'Edit';
+                document.body.classList.remove('edit-mode');
+                if (btn) btn.textContent = 'EDIT ▼';
             } else {
-                document.body.classList.remove('performance-mode');
-                btn.textContent = 'Perform';
+                document.body.classList.add('edit-mode');
+                if (btn) btn.textContent = 'PERFORM ▲';
             }
         }
 
         applyViewMode();
+
+        // =================================================================
+        // SIDE PANEL
+        // =================================================================
+
+        function setSidePanel(name) {
+            const sideContent = document.getElementById('sideContent');
+
+            if (activeSidePanel === name) {
+                activeSidePanel = null;
+                sideContent.classList.remove('open');
+                document.querySelectorAll('.side-icon').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.side-panel').forEach(p => p.classList.remove('active'));
+                return;
+            }
+
+            activeSidePanel = name;
+            sideContent.classList.add('open');
+
+            document.querySelectorAll('.side-icon').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.side-panel').forEach(p => p.classList.remove('active'));
+
+            const btn = document.getElementById(`sideBtn${name.charAt(0).toUpperCase() + name.slice(1)}`);
+            if (btn) btn.classList.add('active');
+
+            const panel = document.getElementById(`panel${name.charAt(0).toUpperCase() + name.slice(1)}`);
+            if (panel) panel.classList.add('active');
+
+            if (name === 'scale') renderFretboard();
+        }
 
         // =================================================================
         // INITIALIZATION
@@ -1602,6 +1641,8 @@
 
         connect();
         initScaleRootButtons();
+        const scaleRootDisplayEl = document.getElementById('scaleRootDisplay');
+        if (scaleRootDisplayEl) scaleRootDisplayEl.textContent = scaleRoot;
         setGuitarMode(guitarMode); // init toggle active state + render
 
 
