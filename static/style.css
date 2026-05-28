@@ -74,13 +74,27 @@ input, select {
    LAYOUT
    ========================================================================== */
 
+html, body {
+    height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ── Topbar ── */
 .topbar {
     flex: 0 0 var(--topbar-h);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
-    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+    border-bottom: 2px solid var(--accent);
     background: var(--bg);
     z-index: 10;
 }
@@ -88,22 +102,87 @@ input, select {
 .topbar-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
-.scroll-content {
+.status-led {
+    width: 7px;
+    height: 7px;
+    border-radius: 50% !important;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+.status-led.led-play  { background: var(--play);  box-shadow: 0 0 6px var(--play); }
+.status-led.led-rec   { background: var(--rec);   box-shadow: 0 0 6px var(--rec);  }
+.status-led.led-armed { background: #f59e42;       box-shadow: 0 0 6px #f59e42;    }
+
+.topbar-state {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+}
+.topbar-state.state-play  { color: var(--play); }
+.topbar-state.state-rec   { color: var(--rec);  }
+.topbar-state.state-armed { color: #f59e42;     }
+
+.topbar-divider { color: var(--border-dim); font-size: 10px; }
+
+.topbar-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+}
+
+.edit-toggle-btn {
+    padding: 3px 8px;
+    border: 1px solid var(--border-dim);
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 0.8px;
+    background: transparent;
+    cursor: pointer;
+}
+.edit-toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Two-column body ── */
+.app-body {
     flex: 1 1 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
 }
 
+.left-col {
+    width: 44%;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ── Edit panels (hidden in performance mode) ── */
+.edit-panels {
+    display: none;
+    flex-direction: column;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+}
+
+body.edit-mode .app-body    { flex: 0 0 60vh; }
+body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
+
+/* ── Footer ── */
 .bottom-bar {
-    flex: 0 0 auto;
-    background: var(--surface);
-    border-top: 1px solid var(--border-strong);
-    padding: 10px 14px;
-    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    flex: 0 0 var(--footer-h);
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    padding: 7px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 /* ==========================================================================
