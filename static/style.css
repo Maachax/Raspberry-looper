@@ -1156,6 +1156,36 @@ kbd {
     letter-spacing: 0.3px;
 }
 
+.boost-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    height: 18px;
+}
+.boost-label {
+    font-size: 0.68em;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    width: 38px;
+}
+.boost-slider {
+    flex: 1;
+    height: 4px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+.boost-value {
+    font-size: 0.72em;
+    color: var(--text-muted);
+    width: 42px;
+    text-align: right;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
 /* Main controls */
 .controls {
     display: flex;
