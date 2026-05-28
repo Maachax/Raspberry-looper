@@ -2006,3 +2006,44 @@ body.edit-mode .layer-expanded { display: flex; }
     from { opacity: 1; }
     to   { opacity: 0.55; }
 }
+
+/* ==========================================================================
+   EDIT PANELS
+   ========================================================================== */
+
+.edit-panels {
+    padding: 0;
+}
+
+.edit-section {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px;
+}
+
+.edit-section-header {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    border-left: 2px solid var(--border-dim);
+    padding-left: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.keyboard-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.keyboard-hint kbd {
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    padding: 1px 5px;
+    font-size: 10px;
+    font-family: monospace;
+}
