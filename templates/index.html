@@ -118,6 +118,10 @@
         <div class="section scale-section">
             <div class="scale-header">
                 <span class="section-label">Scale</span>
+                <div class="string-mode-toggle">
+                    <button class="string-mode-btn" data-mode="6string" onclick="setGuitarMode('6string')">6 str</button>
+                    <button class="string-mode-btn" data-mode="8string" onclick="setGuitarMode('8string')">8 str</button>
+                </div>
                 <select class="scale-type-select" id="scaleTypeSelect" onchange="setScaleType(this.value)">
                     <option value="minor">Natural Minor</option>
                     <option value="major">Major</option>

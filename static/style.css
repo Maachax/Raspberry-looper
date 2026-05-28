@@ -434,6 +434,28 @@ input, select {
     margin-bottom: 12px;
 }
 
+.string-mode-toggle {
+    display: flex;
+    gap: 2px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+}
+.string-mode-btn {
+    padding: 3px 8px;
+    background: transparent;
+    border: none;
+    border-radius: calc(var(--radius-sm) - 2px);
+    color: var(--text-muted);
+    font-size: 0.75em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.12s;
+}
+.string-mode-btn:hover { color: var(--text); }
+.string-mode-btn.active { background: var(--surface-3, var(--border)); color: var(--text); }
+
 .scale-type-select {
     background: var(--surface-2);
     border: 1px solid var(--border-strong);

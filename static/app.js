@@ -39,8 +39,9 @@
         // =================================================================
 
         const SCALE_NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-        // Open string notes in semitones from C: Low E, A, D, G, B, High e
-        const OPEN_STRINGS = [4, 9, 2, 7, 11, 4];
+        // Open string notes in semitones from C
+        const OPEN_STRINGS_6 = [4, 9, 2, 7, 11, 4];          // Low E A D G B e
+        const OPEN_STRINGS_8 = [6, 11, 4, 9, 2, 7, 11, 4];   // F# B E A D G B e
         const SCALE_INTERVALS = {
             'minor':          [0, 2, 3, 5, 7, 8, 10],
             'major':          [0, 2, 4, 5, 7, 9, 11],
@@ -76,6 +77,16 @@
 
         let scaleRoot = 'A';
         let scaleType = 'minor';
+        let guitarMode = localStorage.getItem('guitarMode') || '8string';
+
+        function setGuitarMode(mode) {
+            guitarMode = mode;
+            localStorage.setItem('guitarMode', mode);
+            document.querySelectorAll('.string-mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+            renderFretboard();
+        }
 
         function initScaleRootButtons() {
             const row = document.getElementById('scaleRootRow');
@@ -183,21 +194,25 @@
             const rootIdx = SCALE_NOTES.indexOf(scaleRoot);
             const intervals = new Set(SCALE_INTERVALS[scaleType] || []);
 
-            const W = 640, H = 112;
+            const OPEN_STRINGS = guitarMode === '8string' ? OPEN_STRINGS_8 : OPEN_STRINGS_6;
+            const STRINGS = OPEN_STRINGS.length;
+
+            const W = 640;
             const padL = 32, padR = 10, padT = 12, padB = 22;
-            const FRETS = 12, STRINGS = 6;
+            const FRETS = 12;
+            const STRING_SPACING = 15.6; // px between strings (fixed regardless of count)
+            const H = padT + padB + STRING_SPACING * (STRINGS - 1);
             const fretW = (W - padL - padR) / FRETS;
-            const stringH = (H - padT - padB) / (STRINGS - 1);
             const DOT_R = 6.5;
             const openX = padL - fretW * 0.58;
 
             const fretX = f => padL + f * fretW;
             const noteX = f => f === 0 ? openX : padL + (f - 0.5) * fretW;
-            const stringY = s => padT + (STRINGS - 1 - s) * stringH; // s=0 = low E = bottom row
+            const stringY = s => padT + (STRINGS - 1 - s) * STRING_SPACING; // s=0 = lowest string = bottom
 
             let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" width="100%" style="display:block">`;
 
-            // String lines (low E thickest at bottom)
+            // String lines
             for (let s = 0; s < STRINGS; s++) {
                 const y = stringY(s);
                 const sw = 0.7 + s * 0.32;
@@ -207,11 +222,11 @@
             // Fret lines (nut thicker)
             for (let f = 0; f <= FRETS; f++) {
                 const x = fretX(f);
-                svg += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + (STRINGS-1)*stringH}" stroke="${f === 0 ? '#6b7280' : '#1e2533'}" stroke-width="${f === 0 ? 3 : 1.5}"/>`;
+                svg += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + (STRINGS-1)*STRING_SPACING}" stroke="${f === 0 ? '#6b7280' : '#1e2533'}" stroke-width="${f === 0 ? 3 : 1.5}"/>`;
             }
 
             // Position markers below strings
-            const markerY = padT + (STRINGS - 1) * stringH + 13;
+            const markerY = padT + (STRINGS - 1) * STRING_SPACING + 13;
             for (const mf of [3, 5, 7, 9]) {
                 svg += `<circle cx="${padL + (mf - 0.5) * fretW}" cy="${markerY}" r="3.5" fill="#2d3748"/>`;
             }
@@ -1576,7 +1591,8 @@
 
         connect();
         initScaleRootButtons();
-        renderFretboard();
+        setGuitarMode(guitarMode); // init toggle active state + render
+
 
         // Poll for UI updates (progress bar + level meter)
         setInterval(() => {
