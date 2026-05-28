@@ -1547,22 +1547,22 @@ body.edit-mode .layer-expanded { display: flex; }
 
 /* ── Icon strip ── */
 .side-strip {
-    width: 28px;
+    width: 44px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 6px 0;
-    gap: 3px;
+    padding: 8px 0;
+    gap: 6px;
     background: #0a0c10;
     border-left: 1px solid var(--border);
 }
 
 .side-icon {
-    width: 22px;
-    padding: 5px 0;
+    width: 36px;
+    padding: 10px 0;
     text-align: center;
-    font-size: 9px;
+    font-size: 15px;
     color: var(--text-muted);
     border: 1px solid var(--border);
     background: transparent;
