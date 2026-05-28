@@ -1492,3 +1492,179 @@ kbd {
 }
 .scale-candidate-chip:hover { border-color: var(--accent); color: var(--text); }
 .scale-candidate-chip .chip-score { color: var(--text-muted); font-size: 0.88em; }
+
+/* ==========================================================================
+   PANELS
+   ========================================================================== */
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.panel-flex { flex: 1 1 0; overflow: hidden; }
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    border-left: 2px solid var(--border-dim);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.panel-header.accent-primary { border-left-color: var(--accent);       color: var(--accent);       }
+.panel-header.accent-scale   { border-left-color: var(--accent-scale); color: var(--accent-scale); }
+.panel-header.accent-layer   { border-left-color: var(--accent-layer); color: var(--accent-layer); }
+.panel-header.accent-dim     { border-left-color: var(--border-dim);   color: var(--text-muted);   }
+
+.panel-body {
+    padding: 8px 10px;
+}
+
+/* ── TEMPO panel ── */
+.tempo-body {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.bpm-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -2px;
+    line-height: 1;
+}
+
+.bpm-sub {
+    font-size: 9px;
+    letter-spacing: 0.4px;
+}
+
+/* ── POSITION panel ── */
+.position-body { padding: 7px 10px; }
+
+.pos-bar-wrap {
+    height: 3px;
+    background: var(--border);
+    position: relative;
+    margin-bottom: 4px;
+}
+
+.pos-bar-wrap .beat-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.pos-bar-wrap .progress-bar {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--accent);
+    transition: width 0.08s linear;
+}
+
+.pos-times {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: var(--text-muted);
+}
+
+/* ── LAYERS panel ── */
+.layers-body {
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow-y: auto;
+    flex: 1 1 0;
+}
+
+.layers-empty {
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 4px 0;
+}
+
+.layer-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--border-dim);
+    cursor: pointer;
+}
+
+.layer-row:hover { border-color: var(--border-dim); }
+
+.layer-row.muted { opacity: 0.45; }
+
+.layer-name {
+    flex: 1;
+    font-size: 10px;
+    color: var(--text);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.layer-vol-bar-bg {
+    width: 36px;
+    height: 2px;
+    background: var(--border);
+    flex-shrink: 0;
+}
+
+.layer-vol-bar {
+    height: 100%;
+    background: var(--border-dim);
+}
+
+.layer-vol-num {
+    font-size: 8px;
+    color: var(--text-muted);
+    width: 20px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.layer-expanded {
+    display: none;
+    padding: 6px 8px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-left: 2px solid var(--border-dim);
+    flex-direction: column;
+    gap: 6px;
+}
+
+body.edit-mode .layer-expanded { display: flex; }
+
+.color-swatches {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.color-swatch {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+
+.color-swatch.active { border-color: var(--text); }
