@@ -3,22 +3,24 @@
    ========================================================================== */
 
 :root {
-    --bg:           #0c1018;
-    --surface:      #141927;
-    --surface-2:    #1c2438;
-    --border:       rgba(255, 255, 255, 0.07);
-    --border-strong: rgba(255, 255, 255, 0.14);
+    /* Palette A — Indigo/Teal */
+    --bg:           #0d0f14;
+    --surface:      #111318;
+    --border:       #1a1f2e;
+    --border-dim:   #252a36;
     --text:         #dde4f0;
-    --text-dim:     #8898aa;
     --text-muted:   #4a5a6e;
-    --accent:       #5865f2;
-    --rec:          #e8424a;
+
+    /* Accents */
+    --accent:       #5865f2;   /* TEMPO, progress, primary */
+    --accent-scale: #4fd1c5;   /* SCALE panel */
+    --accent-layer: #ed8936;   /* LAYERS panel */
     --play:         #2bca6e;
-    --armed:        #f59e42;
-    --topbar-h:     52px;
-    --bottombar-h:  90px;
-    --radius:       10px;
-    --radius-sm:    6px;
+    --rec:          #e8424a;
+
+    /* Layout */
+    --topbar-h:     42px;
+    --footer-h:     84px;
 }
 
 /* ==========================================================================
@@ -29,6 +31,12 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+    border-radius: 0 !important;
+}
+
+.mono {
+    font-family: "SF Mono", "Roboto Mono", "Courier New", monospace;
+    font-variant-numeric: tabular-nums;
 }
 
 html, body {
