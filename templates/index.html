@@ -103,14 +103,21 @@
             </div>
         </div>
 
-        <!-- Master Volume (edit-only) -->
+        <!-- Master Volume + Output Boost (edit-only) -->
         <div class="section master-volume-section edit-only">
-            <div class="section-label">Master Volume</div>
             <div class="volume-row">
+                <span class="vol-label">Vol</span>
                 <input type="range" class="master-volume-slider" id="masterVolumeSlider"
                        min="0" max="1" step="0.01" value="0.8"
                        oninput="setMasterVolume(this.value)">
                 <span class="master-volume-value" id="masterVolumeValue">80%</span>
+            </div>
+            <div class="volume-row">
+                <span class="vol-label">Boost</span>
+                <input type="range" class="master-volume-slider" id="outputGainSlider"
+                       min="0.25" max="4" step="0.05" value="1"
+                       oninput="setOutputGain(this.value)">
+                <span class="master-volume-value" id="outputGainValue">1.0×</span>
             </div>
         </div>
 

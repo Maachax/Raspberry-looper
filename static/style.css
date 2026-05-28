@@ -407,6 +407,15 @@ input, select {
     align-items: center;
     gap: 12px;
 }
+.volume-row + .volume-row { margin-top: 8px; }
+.vol-label {
+    font-size: 0.72em;
+    color: var(--text-muted);
+    width: 30px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
 
 .master-volume-slider {
     flex: 1;
@@ -418,7 +427,7 @@ input, select {
 .master-volume-value {
     font-size: 0.82em;
     color: var(--text-dim);
-    width: 38px;
+    width: 42px;
     text-align: right;
     font-variant-numeric: tabular-nums;
 }

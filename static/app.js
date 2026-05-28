@@ -629,6 +629,12 @@
             document.getElementById('masterVolumeValue').textContent = `${Math.round(vol * 100)}%`;
             sendCommand('set_master_volume', { volume: vol });
         }
+
+        function setOutputGain(gain) {
+            const g = parseFloat(gain);
+            document.getElementById('outputGainValue').textContent = `${g.toFixed(1)}×`;
+            sendCommand('set_output_gain', { gain: g });
+        }
         
         function deleteLayer(layerId) {
             if (confirm('Delete this layer?')) {
@@ -1350,6 +1356,11 @@
                     masterVolumeSlider.value = serverState.master_volume;
                     masterVolumeValue.textContent = `${Math.round(serverState.master_volume * 100)}%`;
                 }
+            }
+            const outputGainSlider = document.getElementById('outputGainSlider');
+            if (serverState.output_gain !== undefined && document.activeElement !== outputGainSlider) {
+                outputGainSlider.value = serverState.output_gain;
+                document.getElementById('outputGainValue').textContent = `${serverState.output_gain.toFixed(1)}×`;
             }
             
             // --- Time Display ---

@@ -151,6 +151,9 @@ class WebLooper:
         
         # Master volume (0.0 to 1.0)
         self.master_volume = 0.8        # Default 80% - leaves headroom
+
+        # Output boost (1.0 = unity, up to 4.0 = +12dB)
+        self.output_gain = 1.0
         
         # Thread safety
         self.lock = threading.Lock()
@@ -344,8 +347,10 @@ class WebLooper:
                                 self.recording_position += frames
                 
                 # -------------------------------------------------------------
-                # Soft limiting to prevent clipping
+                # Output boost + soft limiting to prevent clipping
                 # -------------------------------------------------------------
+                if self.output_gain != 1.0:
+                    output *= self.output_gain
                 max_val = np.abs(output).max()
                 if max_val > 0.95:
                     output *= (0.95 / max_val)
@@ -473,7 +478,14 @@ class WebLooper:
             self.master_volume = max(0.0, min(1.0, volume))
             print(f"✓ Master volume: {int(self.master_volume * 100)}%")
             return True
-    
+
+    def set_output_gain(self, gain: float) -> bool:
+        """Set output boost (1.0 = unity, up to 4.0). Returns success."""
+        with self.lock:
+            self.output_gain = max(0.0, min(4.0, gain))
+            print(f"✓ Output boost: {self.output_gain:.1f}x")
+            return True
+
     def toggle_layer(self, layer_id: int) -> bool:
         """Toggle play/pause for a layer. Returns success."""
         with self.lock:
@@ -1414,6 +1426,7 @@ class WebLooper:
             beats_per_bar = self.beats_per_bar
             quantize_enabled = self.quantize_enabled
             master_volume = self.master_volume
+            output_gain = self.output_gain
             callback_time = self.callback_time
             dropout_count = self.dropout_count
             layers_data = [layer.to_dict() for layer in self.layers]
@@ -1469,6 +1482,7 @@ class WebLooper:
             'state': state,
             'master_duration': master_duration,
             'master_volume': master_volume,
+            'output_gain': output_gain,
             'position_ratio': position_ratio,
             'current_time': current_time,
             'recording_time': recording_position / SAMPLE_RATE if current_state == LooperState.RECORDING_MASTER else 0,

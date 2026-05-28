@@ -200,6 +200,8 @@ def handle_command(data):
         looper.set_layer_volume(data.get('layer_id', 0), data.get('volume', 1.0))
     elif command == 'set_master_volume':
         looper.set_master_volume(data.get('volume', 0.8))
+    elif command == 'set_output_gain':
+        looper.set_output_gain(data.get('gain', 1.0))
     elif command == 'delete_layer':
         looper.delete_layer(data.get('layer_id', 0))
     elif command == 'clear_all':
