@@ -189,11 +189,6 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
    SECTIONS
    ========================================================================== */
 
-.section {
-    padding: 16px;
-    border-bottom: 1px solid var(--border);
-}
-
 .section-label {
     font-size: 0.72em;
     font-weight: 700;
@@ -210,55 +205,9 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
    TOP BAR
    ========================================================================== */
 
-.connection-status {
-    font-size: 1.1em;
-    line-height: 1;
-    transition: color 0.3s;
-}
-.connection-status.connected    { color: var(--play); }
-.connection-status.disconnected { color: var(--text-muted); }
-
-.status-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-weight: 700;
-    font-size: 0.78em;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-}
-
-.status-idle      { background: var(--surface-2); color: var(--text-dim); }
-.status-recording { background: var(--rec); color: #fff; animation: pulse 1s infinite; }
-.status-playing   { background: var(--play); color: #0a1a10; }
-.status-armed     { background: var(--armed); color: #1a1000; animation: pulse 1s infinite; }
-.status-countdown { background: #805ad5; color: #fff; }
-
-.view-toggle-btn {
-    padding: 6px 14px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-strong);
-    background: transparent;
-    color: var(--text-dim);
-    font-size: 0.82em;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-    transition: all 0.15s;
-}
-.view-toggle-btn:hover {
-    background: var(--surface-2);
-    color: var(--text);
-}
-
 /* ==========================================================================
    PROGRESS BAR
    ========================================================================== */
-
-.progress-section {
-    padding-top: 14px;
-    padding-bottom: 14px;
-}
 
 .time-display {
     font-size: 0.82em;
@@ -309,6 +258,8 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 /* ==========================================================================
    TEMPO SECTION
    ========================================================================== */
+
+.tempo-section { display: none; }
 
 .tempo-row {
     display: flex;
@@ -523,12 +474,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
    SCALE VISUALIZER
    ========================================================================== */
 
-.scale-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-}
+.scale-section { display: none; }
 
 .string-mode-toggle {
     display: flex;
@@ -596,21 +542,7 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
    LAYERS
    ========================================================================== */
 
-.empty-state {
-    text-align: center;
-    padding: 24px 0;
-    color: var(--text-muted);
-}
-
-.empty-state-icon {
-    font-size: 2em;
-    margin-bottom: 8px;
-    opacity: 0.5;
-}
-
-.empty-state p {
-    font-size: 0.85em;
-}
+.layers-section { display: none; }
 
 .layer {
     background: var(--surface-2);
@@ -890,10 +822,6 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 /* ==========================================================================
    TRIM EDITOR
    ========================================================================== */
-
-.trim-section {
-    overflow: hidden;
-}
 
 .trim-header {
     display: flex;
@@ -1181,23 +1109,6 @@ kbd {
    BOTTOM BAR
    ========================================================================== */
 
-.level-strip {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
-    height: 18px;
-}
-
-.level-strip-label {
-    font-size: 0.68em;
-    font-weight: 700;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    flex-shrink: 0;
-}
-
 .level-meter-bar-bg {
     flex: 1;
     height: 6px;
@@ -1241,42 +1152,6 @@ kbd {
     width: 26px;
     flex-shrink: 0;
     letter-spacing: 0.3px;
-}
-
-.boost-strip {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
-    height: 18px;
-}
-.boost-label {
-    font-size: 0.68em;
-    font-weight: 700;
-    letter-spacing: 0.8px;
-    color: var(--text-muted);
-    flex-shrink: 0;
-    width: 38px;
-}
-.boost-slider {
-    flex: 1;
-    height: 4px;
-    accent-color: var(--accent);
-    cursor: pointer;
-}
-.boost-value {
-    font-size: 0.72em;
-    color: var(--text-muted);
-    width: 42px;
-    text-align: right;
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
-}
-
-/* Main controls */
-.controls {
-    display: flex;
-    gap: 8px;
 }
 
 .btn-rec {
@@ -1438,17 +1313,9 @@ kbd {
    PERFORMANCE MODE
    ========================================================================== */
 
-.performance-mode .edit-only {
-    display: none !important;
-}
-
 /* ==========================================================================
    SCROLLBAR
    ========================================================================== */
-
-.scroll-content::-webkit-scrollbar { width: 4px; }
-.scroll-content::-webkit-scrollbar-track { background: transparent; }
-.scroll-content::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
 
 /* Scale detection */
 .detect-scale-btn {
@@ -2019,6 +1886,9 @@ body.edit-mode .layer-expanded { display: flex; }
     border-bottom: 1px solid var(--border);
     padding: 10px 12px;
 }
+
+.edit-only { display: none; }
+.performance-mode .edit-only { display: none !important; }
 
 .edit-section-header {
     font-size: 8px;
