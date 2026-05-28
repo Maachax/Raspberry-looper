@@ -1872,3 +1872,137 @@ body.edit-mode .layer-expanded { display: flex; }
     border-color: var(--accent-scale);
     color: var(--accent-scale);
 }
+
+/* ==========================================================================
+   FOOTER
+   ========================================================================== */
+
+.footer-meters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.meter-label {
+    font-size: 8px;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.meter-sep { color: var(--border-dim); font-size: 9px; }
+
+.level-meter-bar-bg {
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    position: relative;
+    overflow: visible;
+}
+
+.level-meter-bar {
+    height: 100%;
+    background: var(--play);
+    max-width: 100%;
+    transition: width 0.05s;
+}
+
+.level-meter-peak {
+    position: absolute;
+    top: -2px;
+    width: 1px;
+    height: 6px;
+    background: var(--play);
+    transition: left 0.1s;
+}
+
+.level-meter-db {
+    font-size: 9px;
+    color: var(--text-muted);
+    width: 30px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.clip-indicator {
+    font-size: 8px;
+    color: var(--rec);
+    flex-shrink: 0;
+    width: 12px;
+}
+
+.boost-slider {
+    flex: 1;
+    max-width: 60px;
+    height: 2px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.boost-value {
+    font-size: 9px;
+    color: var(--text);
+    width: 28px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+/* ── Transport buttons ── */
+.footer-transport {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-rec {
+    flex: 3;
+    padding: 10px;
+    background: var(--rec);
+    color: #fff;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-rec.recording {
+    background: #b91c1c;
+    animation: pulse 0.6s ease-in-out infinite alternate;
+}
+
+.btn-overdub {
+    flex: 2;
+    padding: 10px;
+    background: transparent;
+    color: var(--accent);
+    font-size: 10px;
+    border: 1px solid var(--accent);
+    letter-spacing: 0.5px;
+    cursor: pointer;
+}
+
+.btn-overdub:disabled { opacity: 0.3; cursor: default; }
+
+.btn-overdub.armed {
+    background: #f59e42;
+    border-color: #f59e42;
+    color: #0d0f14;
+    font-weight: 700;
+}
+
+.btn-clear {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 10px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+}
+
+.btn-clear:hover { border-color: var(--rec); color: var(--rec); }
+
+@keyframes pulse {
+    from { opacity: 1; }
+    to   { opacity: 0.55; }
+}
