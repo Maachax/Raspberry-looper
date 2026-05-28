@@ -470,7 +470,7 @@
             socket.on('connect', () => {
                 console.log('✓ Connected');
                 document.getElementById('connectionStatus').textContent = '● Connected';
-                document.getElementById('connectionStatus').className = 'connection-status connected';
+                document.getElementById('connectionStatus').className = 'status-led led-play';
                 // Initialize audio context on first interaction
                 document.addEventListener('click', () => initAudio(), { once: true });
                 // Fetch saved sessions
@@ -480,7 +480,7 @@
             socket.on('disconnect', () => {
                 console.log('✗ Disconnected');
                 document.getElementById('connectionStatus').textContent = '● Disconnected';
-                document.getElementById('connectionStatus').className = 'connection-status disconnected';
+                document.getElementById('connectionStatus').className = 'status-led';
             });
             
             socket.on('update', (data) => {
