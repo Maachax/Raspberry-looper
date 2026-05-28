@@ -5,7 +5,7 @@ from pathlib import Path
 import sounddevice as sd
 
 from config import SAMPLE_RATE
-from audio import WebLooper, PYDUB_AVAILABLE, FFMPEG_AVAILABLE, LIBROSA_AVAILABLE
+from audio import WebLooper, PYDUB_AVAILABLE, FFMPEG_AVAILABLE, LIBROSA_AVAILABLE, warmup_librosa
 import routes
 from routes import app, socketio
 
@@ -71,6 +71,9 @@ def main():
                 print(f"⚠ Device {device} may not support input+output")
         except ValueError:
             pass
+
+    # Pre-compile librosa numba JIT functions before the audio stream starts
+    warmup_librosa()
 
     # Create and start looper
     routes.looper = WebLooper(device=device)

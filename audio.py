@@ -42,6 +42,22 @@ except ImportError:
     print("⚠ librosa not installed - tempo detection disabled")
     print("  Install with: pip install librosa")
 
+
+def warmup_librosa():
+    """
+    Pre-compile numba JIT functions used by librosa.
+    Must be called before starting the audio stream — JIT compilation saturates
+    all CPU cores for several seconds, which kills the real-time audio thread.
+    """
+    if not LIBROSA_AVAILABLE:
+        return
+    print("⏳ Warming up librosa (numba JIT)... ", end='', flush=True)
+    dummy = np.zeros(SAMPLE_RATE, dtype=np.float64)
+    librosa.onset.onset_strength(y=dummy, sr=SAMPLE_RATE)
+    librosa.feature.chroma_stft(y=dummy, sr=SAMPLE_RATE)
+    librosa.beat.beat_track(y=dummy, sr=SAMPLE_RATE, start_bpm=120)
+    print("done")
+
 # Optional: pydub for audio export
 try:
     from pydub import AudioSegment
