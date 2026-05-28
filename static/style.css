@@ -1887,9 +1887,6 @@ body.edit-mode .layer-expanded { display: flex; }
     padding: 10px 12px;
 }
 
-.edit-only { display: none; }
-.performance-mode .edit-only { display: none !important; }
-
 .edit-section-header {
     font-size: 8px;
     font-weight: 700;
