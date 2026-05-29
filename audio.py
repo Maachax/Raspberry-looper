@@ -1512,7 +1512,10 @@ class WebLooper:
             collapse_timeout = self.collapse_timeout
             scale_root = self.scale_root
             scale_type = self.scale_type
-        
+            slots_data = [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.slots]
+            pending_slot_id = self.pending_slot['id'] if self.pending_slot else None
+            active_slot_id = self.active_slot_id
+
         # Compute derived values WITHOUT lock
         position_ratio = 0.0
         current_time = 0.0
@@ -1589,6 +1592,11 @@ class WebLooper:
                 'enabled': collapse_enabled,
                 'scene_id': collapse_scene_id,
                 'timeout': collapse_timeout,
+            },
+            'slots': {
+                'list': slots_data,
+                'pending_id': pending_slot_id,
+                'active_id': active_slot_id,
             },
             'scale': {
                 'root': scale_root,

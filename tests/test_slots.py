@@ -100,3 +100,14 @@ def test_clear_all_empties_slots_and_resets():
     assert looper.active_slot_id is None
     assert looper.pending_slot is None
     assert looper._next_slot_id == 1
+
+
+def test_get_state_includes_slots_block():
+    looper = _looper_with_layers(2)
+    slot = looper.add_slot()
+    looper.set_slot_loops(slot['id'], [0])
+    looper._apply_slot(slot)
+    state = looper.get_state()
+    assert state['slots']['list'] == [{'id': slot['id'], 'loop_ids': [0]}]
+    assert state['slots']['active_id'] == slot['id']
+    assert state['slots']['pending_id'] is None
