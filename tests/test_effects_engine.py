@@ -114,3 +114,14 @@ def test_set_bus_builds_live_reverb_and_clear_removes_it():
     looper.set_bus(None, None)
     assert looper.master_bus is None
     assert looper.bus_reverb is None
+
+
+def test_apply_bus_offline_changes_mix_when_bus_set():
+    looper = WebLooper()
+    looper.set_bus(None, effects.default_effect('reverb'))
+    mix = _tone(440, 0.3)
+    out = looper._apply_bus_offline(mix)
+    assert out.shape == mix.shape
+    assert not np.array_equal(out, mix)          # reverb altered it
+    looper.set_bus(None, None)
+    assert np.array_equal(looper._apply_bus_offline(mix), mix)  # no bus = unchanged

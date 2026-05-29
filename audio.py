@@ -425,6 +425,17 @@ class WebLooper:
             self._refresh_bus_reverb(effective)
             return True
 
+    def _apply_bus_offline(self, mixed: np.ndarray) -> np.ndarray:
+        """Apply the currently effective bus reverb to a finished mix (for export)."""
+        import effects as fx
+        active = next((s for s in self.sections if s['id'] == self.active_section_id), None)
+        effective = (active.get('bus') if active and active.get('bus') is not None
+                     else self.master_bus)
+        if not (effective and effective.get('enabled', True) and effective.get('type') == 'reverb'):
+            return mixed
+        board = fx.make_bus_reverb(effective['params'])
+        return np.asarray(board(mixed.astype(np.float32), SAMPLE_RATE, reset=True), dtype=np.float32)
+
     # -------------------------------------------------------------------------
     # COMMANDS (Called from web interface)
     # -------------------------------------------------------------------------
@@ -1324,6 +1335,8 @@ class WebLooper:
                 if layer['is_playing']:
                     mixed += layer['buffer'] * layer['volume']
             
+            # Apply bus reverb (matches live playback) before master volume
+            mixed = self._apply_bus_offline(mixed)
             # Apply master volume
             mixed *= master_vol
             
