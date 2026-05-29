@@ -111,3 +111,28 @@ def test_get_state_includes_slots_block():
     assert state['slots']['list'] == [{'id': slot['id'], 'loop_ids': [0]}]
     assert state['slots']['active_id'] == slot['id']
     assert state['slots']['pending_id'] is None
+
+def test_slots_from_meta_reads_slots_when_present():
+    meta = {'slots': [{'id': 1, 'loop_ids': [0, 2]}, {'id': 5, 'loop_ids': []}],
+            'next_slot_id': 6}
+    slots, next_id = WebLooper._slots_from_meta(meta)
+    assert slots == [{'id': 1, 'loop_ids': [0, 2]}, {'id': 5, 'loop_ids': []}]
+    assert next_id == 6
+
+def test_slots_from_meta_migrates_old_scenes():
+    meta = {'scenes': {
+        '1': {'id': 1, 'name': 'A', 'layer_states': [
+            {'id': 0, 'is_playing': True, 'volume': 1.0},
+            {'id': 1, 'is_playing': False, 'volume': 1.0}]},
+        '2': {'id': 2, 'name': 'B', 'layer_states': [
+            {'id': 0, 'is_playing': True, 'volume': 1.0},
+            {'id': 1, 'is_playing': True, 'volume': 1.0}]},
+    }}
+    slots, next_id = WebLooper._slots_from_meta(meta)
+    assert slots == [{'id': 1, 'loop_ids': [0]}, {'id': 2, 'loop_ids': [0, 1]}]
+    assert next_id == 3
+
+def test_slots_from_meta_empty_when_neither_present():
+    slots, next_id = WebLooper._slots_from_meta({})
+    assert slots == []
+    assert next_id == 1

@@ -740,8 +740,8 @@ class WebLooper:
                     }
                     for l in self.layers
                 ],
-                'scenes': {str(k): v for k, v in self.scenes.items()},
-                'next_scene_id': self._next_scene_id,
+                'slots': [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.slots],
+                'next_slot_id': self._next_slot_id,
             }
             buffers = [(l.id, l.buffer[:l.length].copy()) for l in self.layers]
 
@@ -756,6 +756,23 @@ class WebLooper:
         except Exception as e:
             print(f"✗ Session save failed: {e}")
             return {'success': False, 'error': str(e)}
+
+    @staticmethod
+    def _slots_from_meta(meta: dict) -> tuple:
+        """Return (slots, next_slot_id) from session meta. Migrates old 'scenes'."""
+        if 'slots' in meta:
+            slots = [{'id': int(s['id']), 'loop_ids': [int(i) for i in s['loop_ids']]}
+                     for s in meta['slots']]
+            next_id = meta.get('next_slot_id',
+                               max([s['id'] for s in slots], default=0) + 1)
+            return slots, next_id
+        # Migrate legacy scenes: one slot per scene, ids = its playing layers
+        slots = []
+        for scene in meta.get('scenes', {}).values():
+            active = [st['id'] for st in scene.get('layer_states', [])
+                      if st.get('is_playing')]
+            slots.append({'id': len(slots) + 1, 'loop_ids': active})
+        return slots, len(slots) + 1
 
     def load_session(self, session_id: str) -> dict:
         """Load a session from disk, replacing current state."""
@@ -798,10 +815,9 @@ class WebLooper:
             self.beats_per_bar = meta.get('beats_per_bar', 4)
             self.master_volume = meta.get('master_volume', 0.8)
 
-            raw_scenes = meta.get('scenes', {})
-            self.scenes = {int(k): v for k, v in raw_scenes.items()}
-            self._next_scene_id = meta.get('next_scene_id', len(self.scenes) + 1)
-            self.pending_scene = None
+            self.slots, self._next_slot_id = self._slots_from_meta(meta)
+            self.pending_slot = None
+            self.active_slot_id = None
 
             self.state = LooperState.PLAYING
             print(f"✓ Session loaded: {meta['name']} ({len(self.layers)} layers)")
