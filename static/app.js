@@ -75,6 +75,41 @@
             'diminished':     'Diminished',
             'whole_tone':     'Whole Tone',
         };
+        const INTERVAL_LABELS = {
+            0: 'R', 1: '♭2', 2: '2', 3: '♭3', 4: '3', 5: '4',
+            6: '♭5', 7: '5', 8: '♭6', 9: '6', 10: '♭7', 11: '7',
+        };
+        // characteristic = interval(s) (semitones from root) that define the scale's flavor.
+        const SCALE_INFO = {
+            'major':          { characteristic: [4, 11], title: 'WHAT DEFINES MAJOR',
+                text: `The bright, resolved sound. The major 3rd (3) makes it happy and the major 7th (7) leans strongly back to the root.` },
+            'minor':          { characteristic: [3], title: 'WHAT DEFINES NATURAL MINOR',
+                text: `The minor 3rd (♭3) is the dark, sad core of every minor sound; the ♭6 and ♭7 deepen the melancholy.` },
+            'dorian':         { characteristic: [9], title: 'WHAT DEFINES DORIAN',
+                text: `A minor scale with a raised 6th. That natural 6 is the note your ear latches onto — it gives Dorian its bright, hopeful, “Santana” color instead of plain-sad minor.` },
+            'phrygian':       { characteristic: [1], title: 'WHAT DEFINES PHRYGIAN',
+                text: `A minor scale with a flat 2nd. That ♭2 sitting right above the root is the tension — dark, Spanish, a metal favorite.` },
+            'lydian':         { characteristic: [6], title: 'WHAT DEFINES LYDIAN',
+                text: `A major scale with a raised 4th (♯4, shown here as ♭5). That floating ♯4 gives Lydian its dreamy, weightless, film-score lift.` },
+            'mixolydian':     { characteristic: [10], title: 'WHAT DEFINES MIXOLYDIAN',
+                text: `A major scale with a flat 7th. The ♭7 keeps it bright but bluesy — the classic dominant, rock and funk sound.` },
+            'locrian':        { characteristic: [1, 6], title: 'WHAT DEFINES LOCRIAN',
+                text: `Flat 2nd AND flat 5th. With its 5th lowered there is no stable home — tense, and rarely used as a key center.` },
+            'harmonic_minor': { characteristic: [11], title: 'WHAT DEFINES HARMONIC MINOR',
+                text: `A minor scale with a raised 7th. The big jump from ♭6 up to the natural 7 gives that exotic, classical/neoclassical color.` },
+            'melodic_minor':  { characteristic: [9, 11], title: 'WHAT DEFINES MELODIC MINOR',
+                text: `A minor scale with a major top — natural 6 and natural 7. Minor on the bottom, major up top: the “jazz minor” sound.` },
+            'pent_major':     { characteristic: [4], title: 'WHAT DEFINES MAJOR PENTATONIC',
+                text: `The major scale with its two tension notes (the 4th and 7th) removed. No half-steps means nothing clashes — it sits safely over almost anything.` },
+            'pent_minor':     { characteristic: [3], title: 'WHAT DEFINES MINOR PENTATONIC',
+                text: `The minor 3rd plus no 2nd or 6th — five notes, no clashes. The universal rock and blues “box”.` },
+            'blues':          { characteristic: [6], title: 'WHAT DEFINES THE BLUES SCALE',
+                text: `Minor pentatonic plus one extra note: the ♭5 “blue note”. That flat-five passing tone is the entire sound.` },
+            'diminished':     { characteristic: [6], title: 'WHAT DEFINES DIMINISHED',
+                text: `A symmetric whole-step / half-step pattern that repeats every minor 3rd. Tense and unstable — used over diminished and dominant chords.` },
+            'whole_tone':     { characteristic: [6], title: 'WHAT DEFINES WHOLE TONE',
+                text: `Every step is a whole tone — no half-steps at all. With no leading tone there is no pull home, giving a dreamy, augmented, floating sound.` },
+        };
 
         let scaleRoot = 'A';
         let scaleType = 'minor';
@@ -195,28 +230,52 @@
             if (el) el.classList.remove('visible');
         }
 
+        function renderScaleInfo() {
+            const info = SCALE_INFO[scaleType] || { characteristic: [], title: '', text: '' };
+            const charSet = new Set(info.characteristic || []);
+            const intervals = SCALE_INTERVALS[scaleType] || [];
+
+            const formulaEl = document.getElementById('intervalFormula');
+            if (formulaEl) {
+                formulaEl.innerHTML = intervals.map(iv => {
+                    const cls = iv === 0 ? 'pill pill-root'
+                              : charSet.has(iv) ? 'pill pill-char'
+                              : 'pill';
+                    return `<span class="${cls}">${INTERVAL_LABELS[iv]}</span>`;
+                }).join('');
+            }
+
+            const titleEl = document.getElementById('scaleExplainTitle');
+            const textEl = document.getElementById('scaleExplainText');
+            if (titleEl) titleEl.textContent = info.title || '';
+            if (textEl) textEl.textContent = info.text || '';
+        }
+
         function renderFretboard() {
             if (activeSidePanel !== 'scale') return;
+            renderScaleInfo();
             const rootIdx = SCALE_NOTES.indexOf(scaleRoot);
             const intervals = new Set(SCALE_INTERVALS[scaleType] || []);
+            const charSet = new Set((SCALE_INFO[scaleType] || {}).characteristic || []);
 
             const OPEN_STRINGS = guitarMode === '8string' ? OPEN_STRINGS_8 : OPEN_STRINGS_6;
             const STRINGS = OPEN_STRINGS.length;
 
             const W = 640;
-            const padL = 32, padR = 10, padT = 12, padB = 22;
+            const padL = 42, padR = 12, padT = 18, padB = 22;
             const FRETS = 12;
-            const STRING_SPACING = 15.6; // px between strings (fixed regardless of count)
+            const STRING_SPACING = 23; // px between strings (room for 2-line labels)
             const H = padT + padB + STRING_SPACING * (STRINGS - 1);
             const fretW = (W - padL - padR) / FRETS;
-            const DOT_R = 6.5;
-            const openX = padL - fretW * 0.58;
+            const DOT_R = 10;
+            const openX = padL - fretW * 0.45; // leaves room for the gold ring on open-string notes
 
             const fretX = f => padL + f * fretW;
             const noteX = f => f === 0 ? openX : padL + (f - 0.5) * fretW;
             const stringY = s => padT + (STRINGS - 1 - s) * STRING_SPACING; // s=0 = lowest string = bottom
 
             let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" width="100%" style="display:block">`;
+            svg += `<defs><filter id="goldGlow"><feGaussianBlur stdDeviation="2.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
 
             // String lines
             for (let s = 0; s < STRINGS; s++) {
@@ -232,7 +291,7 @@
             }
 
             // Position markers below strings
-            const markerY = padT + (STRINGS - 1) * STRING_SPACING + 13;
+            const markerY = padT + (STRINGS - 1) * STRING_SPACING + 14;
             for (const mf of [3, 5, 7, 9]) {
                 svg += `<circle cx="${padL + (mf - 0.5) * fretW}" cy="${markerY}" r="3.5" fill="#2d3748"/>`;
             }
@@ -240,7 +299,7 @@
             svg += `<circle cx="${x12 - 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
             svg += `<circle cx="${x12 + 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
 
-            // Note dots
+            // Note dots — every scale tone labeled note-name + interval; defining notes gold
             for (let s = 0; s < STRINGS; s++) {
                 const y = stringY(s);
                 for (let f = 0; f <= FRETS; f++) {
@@ -248,11 +307,16 @@
                     const interval = (noteIdx - rootIdx + 12) % 12;
                     if (!intervals.has(interval)) continue;
                     const isRoot = interval === 0;
+                    const isChar = charSet.has(interval);
                     const x = noteX(f);
-                    svg += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${isRoot ? '#ed8936' : '#4fd1c5'}" opacity="0.92"/>`;
-                    if (isRoot) {
-                        svg += `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="7.5" fill="#1a1a2e" font-weight="bold">${SCALE_NOTES[noteIdx]}</text>`;
+                    const fill = isRoot ? '#ed8936' : (isChar ? '#f6c453' : '#4fd1c5');
+                    if (isChar) {
+                        svg += `<circle cx="${x}" cy="${y}" r="${DOT_R + 2.5}" fill="none" stroke="#f6c453" stroke-width="1.4" opacity="0.9"/>`;
                     }
+                    svg += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${fill}"${isChar ? ' filter="url(#goldGlow)"' : ''} opacity="0.95"/>`;
+                    const noteName = SCALE_NOTES[noteIdx].replace('#', '♯');
+                    svg += `<text x="${x}" y="${y - 1.5}" text-anchor="middle" font-size="8" font-weight="bold" fill="#15202b">${noteName}</text>`;
+                    svg += `<text x="${x}" y="${y + 7}" text-anchor="middle" font-size="6" fill="#15202b" opacity="0.82">${INTERVAL_LABELS[interval]}</text>`;
                 }
             }
 

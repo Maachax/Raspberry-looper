@@ -117,8 +117,19 @@
                     </select>
                 </div>
                 <div class="scale-root-row" id="scaleRootRow"></div>
+                <div class="interval-formula-label">INTERVAL FORMULA</div>
+                <div class="interval-formula" id="intervalFormula"></div>
                 <div class="fretboard-container">
                     <div id="fretboard"></div>
+                </div>
+                <div class="fretboard-legend">
+                    <span><i class="leg-dot leg-root"></i>Root</span>
+                    <span><i class="leg-dot leg-tone"></i>Scale tone</span>
+                    <span><i class="leg-dot leg-char"></i>Defining note</span>
+                </div>
+                <div class="scale-explain">
+                    <div class="scale-explain-title" id="scaleExplainTitle"></div>
+                    <div class="scale-explain-text" id="scaleExplainText"></div>
                 </div>
                 <button class="detect-scale-btn" id="detectScaleBtn"
                         onclick="detectScale()" disabled>DETECT SCALE</button>
