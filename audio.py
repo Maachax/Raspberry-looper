@@ -96,6 +96,8 @@ class LoopLayer:
         self.volume = 1.0
         self.is_playing = True
         self.color = LAYER_COLORS[layer_id % len(LAYER_COLORS)]
+        self.dry = buffer            # untouched source audio
+        self.fx_chain = []           # this layer's default effect chain
 
     def get_sample_at(self, position: int) -> float:
         """Get sample value at given position (with volume applied)."""
@@ -112,6 +114,7 @@ class LoopLayer:
             'volume': self.volume,
             'is_playing': self.is_playing,
             'color': self.color,
+            'fx_chain': self.fx_chain,
         }
 
 # =============================================================================
@@ -175,6 +178,11 @@ class WebLooper:
         self._next_section_id = 1
         self.pending_section = None   # section to apply at next loop restart
         self.active_section_id = None # id of the section whose set is currently playing
+
+        # Effects
+        self.wet_cache = {}          # (dry_hash, chain_hash) -> wet np.ndarray
+        self.master_bus = None       # default bus reverb effect dict (None = off)
+        self.bus_reverb = None       # live pedalboard.Pedalboard for the master bus
 
         # Scale visualizer
         self.scale_root = 'A'
@@ -359,7 +367,36 @@ class WebLooper:
         
         self.state = LooperState.PLAYING
         print(f"✓ {name} recorded ({self.master_length / SAMPLE_RATE:.1f}s)")
-    
+
+    # -------------------------------------------------------------------------
+    # EFFECTS ENGINE
+    # -------------------------------------------------------------------------
+
+    def _wet_for(self, dry, chain):
+        """Return the rendered wet buffer for dry+chain, memoised by content hash."""
+        import effects
+        key = (hash(dry.tobytes()), effects.chain_hash(chain))
+        cached = self.wet_cache.get(key)
+        if cached is None:
+            cached = effects.render_wet(dry, chain, SAMPLE_RATE)
+            self.wet_cache[key] = cached
+        return cached
+
+    def _rebake_layer(self, layer, chain):
+        """Set a layer's played buffer to the wet render of its dry through chain."""
+        layer.buffer = self._wet_for(layer.dry, chain)
+        layer.length = len(layer.buffer)
+
+    def set_loop_chain(self, layer_id: int, chain: list) -> bool:
+        """Set a layer's default effect chain and re-bake its played buffer."""
+        with self.lock:
+            if not (0 <= layer_id < len(self.layers)):
+                return False
+            layer = self.layers[layer_id]
+            layer.fx_chain = chain
+            self._rebake_layer(layer, chain)
+            return True
+
     # -------------------------------------------------------------------------
     # COMMANDS (Called from web interface)
     # -------------------------------------------------------------------------
