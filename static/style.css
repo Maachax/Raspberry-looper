@@ -1937,3 +1937,41 @@ body.edit-mode .layer-expanded { display: flex; }
     font-size: 10px;
     font-family: monospace;
 }
+
+/* ---- Scale learning: formula strip, legend, explanation ---- */
+.interval-formula-label {
+    font-size: 11px; letter-spacing: .06em; color: #6b7a90; margin: 6px 0 4px;
+}
+.interval-formula {
+    display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.interval-formula .pill {
+    background: #202a3a; border: 1px solid #34425a; color: #aeb9c9;
+    border-radius: 6px; padding: 5px 0; min-width: 30px; text-align: center;
+    font-family: monospace; font-size: 14px; font-weight: 600;
+}
+.interval-formula .pill-root { color: #ed8936; border-color: #ed8936; }
+.interval-formula .pill-char {
+    color: #f6c453; border-color: #f6c453;
+    background: rgba(246,196,83,.14); box-shadow: 0 0 8px rgba(246,196,83,.30);
+}
+.fretboard-legend {
+    display: flex; gap: 14px; margin: 8px 2px 0; font-size: 11px; color: #8595ab;
+}
+.fretboard-legend i.leg-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    vertical-align: middle; margin-right: 4px;
+}
+.leg-root { background: #ed8936; }
+.leg-tone { background: #4fd1c5; }
+.leg-char { background: #f6c453; box-shadow: 0 0 6px #f6c453; }
+.scale-explain {
+    margin-top: 12px; background: #1b2433; border-left: 3px solid #f6c453;
+    border-radius: 0 6px 6px 0; padding: 10px 12px;
+}
+.scale-explain-title {
+    color: #f6c453; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+    margin-bottom: 3px;
+}
+.scale-explain-text { color: #c4cfde; font-size: 13px; line-height: 1.5; }
+.side-panel.active { overflow-y: auto; }
