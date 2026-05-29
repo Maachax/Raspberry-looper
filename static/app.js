@@ -75,6 +75,41 @@
             'diminished':     'Diminished',
             'whole_tone':     'Whole Tone',
         };
+        const INTERVAL_LABELS = {
+            0: 'R', 1: '♭2', 2: '2', 3: '♭3', 4: '3', 5: '4',
+            6: '♭5', 7: '5', 8: '♭6', 9: '6', 10: '♭7', 11: '7',
+        };
+        // characteristic = interval(s) (semitones from root) that define the scale's flavor.
+        const SCALE_INFO = {
+            'major':          { characteristic: [4, 11], title: 'WHAT DEFINES MAJOR',
+                text: `The bright, resolved sound. The major 3rd (3) makes it happy and the major 7th (7) leans strongly back to the root.` },
+            'minor':          { characteristic: [3], title: 'WHAT DEFINES NATURAL MINOR',
+                text: `The minor 3rd (♭3) is the dark, sad core of every minor sound; the ♭6 and ♭7 deepen the melancholy.` },
+            'dorian':         { characteristic: [9], title: 'WHAT DEFINES DORIAN',
+                text: `A minor scale with a raised 6th. That natural 6 is the note your ear latches onto — it gives Dorian its bright, hopeful, “Santana” color instead of plain-sad minor.` },
+            'phrygian':       { characteristic: [1], title: 'WHAT DEFINES PHRYGIAN',
+                text: `A minor scale with a flat 2nd. That ♭2 sitting right above the root is the tension — dark, Spanish, a metal favorite.` },
+            'lydian':         { characteristic: [6], title: 'WHAT DEFINES LYDIAN',
+                text: `A major scale with a raised 4th (♯4, shown here as ♭5). That floating ♯4 gives Lydian its dreamy, weightless, film-score lift.` },
+            'mixolydian':     { characteristic: [10], title: 'WHAT DEFINES MIXOLYDIAN',
+                text: `A major scale with a flat 7th. The ♭7 keeps it bright but bluesy — the classic dominant, rock and funk sound.` },
+            'locrian':        { characteristic: [1, 6], title: 'WHAT DEFINES LOCRIAN',
+                text: `Flat 2nd AND flat 5th. With its 5th lowered there is no stable home — tense, and rarely used as a key center.` },
+            'harmonic_minor': { characteristic: [11], title: 'WHAT DEFINES HARMONIC MINOR',
+                text: `A minor scale with a raised 7th. The big jump from ♭6 up to the natural 7 gives that exotic, classical/neoclassical color.` },
+            'melodic_minor':  { characteristic: [9, 11], title: 'WHAT DEFINES MELODIC MINOR',
+                text: `A minor scale with a major top — natural 6 and natural 7. Minor on the bottom, major up top: the “jazz minor” sound.` },
+            'pent_major':     { characteristic: [4], title: 'WHAT DEFINES MAJOR PENTATONIC',
+                text: `The major scale with its two tension notes (the 4th and 7th) removed. No half-steps means nothing clashes — it sits safely over almost anything.` },
+            'pent_minor':     { characteristic: [3], title: 'WHAT DEFINES MINOR PENTATONIC',
+                text: `The minor 3rd plus no 2nd or 6th — five notes, no clashes. The universal rock and blues “box”.` },
+            'blues':          { characteristic: [6], title: 'WHAT DEFINES THE BLUES SCALE',
+                text: `Minor pentatonic plus one extra note: the ♭5 “blue note”. That flat-five passing tone is the entire sound.` },
+            'diminished':     { characteristic: [6], title: 'WHAT DEFINES DIMINISHED',
+                text: `A symmetric whole-step / half-step pattern that repeats every minor 3rd. Tense and unstable — used over diminished and dominant chords.` },
+            'whole_tone':     { characteristic: [6], title: 'WHAT DEFINES WHOLE TONE',
+                text: `Every step is a whole tone — no half-steps at all. With no leading tone there is no pull home, giving a dreamy, augmented, floating sound.` },
+        };
 
         let scaleRoot = 'A';
         let scaleType = 'minor';
