@@ -256,24 +256,26 @@
             renderScaleInfo();
             const rootIdx = SCALE_NOTES.indexOf(scaleRoot);
             const intervals = new Set(SCALE_INTERVALS[scaleType] || []);
+            const charSet = new Set((SCALE_INFO[scaleType] || {}).characteristic || []);
 
             const OPEN_STRINGS = guitarMode === '8string' ? OPEN_STRINGS_8 : OPEN_STRINGS_6;
             const STRINGS = OPEN_STRINGS.length;
 
             const W = 640;
-            const padL = 32, padR = 10, padT = 12, padB = 22;
+            const padL = 34, padR = 12, padT = 18, padB = 22;
             const FRETS = 12;
-            const STRING_SPACING = 15.6; // px between strings (fixed regardless of count)
+            const STRING_SPACING = 23; // px between strings (room for 2-line labels)
             const H = padT + padB + STRING_SPACING * (STRINGS - 1);
             const fretW = (W - padL - padR) / FRETS;
-            const DOT_R = 6.5;
-            const openX = padL - fretW * 0.58;
+            const DOT_R = 10;
+            const openX = padL - fretW * 0.55;
 
             const fretX = f => padL + f * fretW;
             const noteX = f => f === 0 ? openX : padL + (f - 0.5) * fretW;
             const stringY = s => padT + (STRINGS - 1 - s) * STRING_SPACING; // s=0 = lowest string = bottom
 
             let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" width="100%" style="display:block">`;
+            svg += `<defs><filter id="goldGlow"><feGaussianBlur stdDeviation="2.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
 
             // String lines
             for (let s = 0; s < STRINGS; s++) {
@@ -289,7 +291,7 @@
             }
 
             // Position markers below strings
-            const markerY = padT + (STRINGS - 1) * STRING_SPACING + 13;
+            const markerY = padT + (STRINGS - 1) * STRING_SPACING + 14;
             for (const mf of [3, 5, 7, 9]) {
                 svg += `<circle cx="${padL + (mf - 0.5) * fretW}" cy="${markerY}" r="3.5" fill="#2d3748"/>`;
             }
@@ -297,7 +299,7 @@
             svg += `<circle cx="${x12 - 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
             svg += `<circle cx="${x12 + 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
 
-            // Note dots
+            // Note dots — every scale tone labeled note-name + interval; defining notes gold
             for (let s = 0; s < STRINGS; s++) {
                 const y = stringY(s);
                 for (let f = 0; f <= FRETS; f++) {
@@ -305,11 +307,16 @@
                     const interval = (noteIdx - rootIdx + 12) % 12;
                     if (!intervals.has(interval)) continue;
                     const isRoot = interval === 0;
+                    const isChar = charSet.has(interval);
                     const x = noteX(f);
-                    svg += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${isRoot ? '#ed8936' : '#4fd1c5'}" opacity="0.92"/>`;
-                    if (isRoot) {
-                        svg += `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="7.5" fill="#1a1a2e" font-weight="bold">${SCALE_NOTES[noteIdx]}</text>`;
+                    const fill = isRoot ? '#ed8936' : (isChar ? '#f6c453' : '#4fd1c5');
+                    if (isChar) {
+                        svg += `<circle cx="${x}" cy="${y}" r="${DOT_R + 2.5}" fill="none" stroke="#f6c453" stroke-width="1.4" opacity="0.9"/>`;
                     }
+                    svg += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${fill}"${isChar ? ' filter="url(#goldGlow)"' : ''} opacity="0.95"/>`;
+                    const noteName = SCALE_NOTES[noteIdx].replace('#', '♯');
+                    svg += `<text x="${x}" y="${y - 1.5}" text-anchor="middle" font-size="8" font-weight="bold" fill="#15202b">${noteName}</text>`;
+                    svg += `<text x="${x}" y="${y + 7}" text-anchor="middle" font-size="6" fill="#15202b" opacity="0.82">${INTERVAL_LABELS[interval]}</text>`;
                 }
             }
 
