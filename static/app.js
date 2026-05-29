@@ -724,6 +724,76 @@
         }
 
         // =================================================================
+        // SLOTS
+        // =================================================================
+
+        function addSlot() { sendCommand('add_slot'); }
+        function deleteSlot(slotId) { sendCommand('delete_slot', { slot_id: slotId }); }
+        function launchSlot(slotId) {
+            const quantized = serverState.state === 'playing';
+            sendCommand('launch_slot', { slot_id: slotId, quantized });
+        }
+        function addLoopToSlot(slotId, loopId) {
+            const slot = (serverState.slots?.list || []).find(s => s.id === slotId);
+            if (!slot || slot.loop_ids.includes(loopId)) return;
+            sendCommand('set_slot_loops', { slot_id: slotId, loop_ids: [...slot.loop_ids, loopId] });
+        }
+        function removeLoopFromSlot(slotId, loopId) {
+            const slot = (serverState.slots?.list || []).find(s => s.id === slotId);
+            if (!slot) return;
+            sendCommand('set_slot_loops', { slot_id: slotId, loop_ids: slot.loop_ids.filter(i => i !== loopId) });
+        }
+        function slotDragOver(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drop-hover'); }
+        function slotDragLeave(ev) { ev.currentTarget.classList.remove('drop-hover'); }
+        function slotDrop(ev, slotId) {
+            ev.preventDefault();
+            ev.currentTarget.classList.remove('drop-hover');
+            const loopId = parseInt(ev.dataTransfer.getData('text/plain'), 10);
+            if (!Number.isNaN(loopId)) addLoopToSlot(slotId, loopId);
+        }
+
+        let _lastSlotsJson = '';
+        function renderSlots() {
+            const json = JSON.stringify(serverState.slots) + JSON.stringify(
+                (serverState.layers || []).map(l => [l.id, l.name, l.color]));
+            if (json === _lastSlotsJson) return;
+            _lastSlotsJson = json;
+
+            const layers = serverState.layers || [];
+            const byId = Object.fromEntries(layers.map(l => [l.id, l]));
+            const slots = serverState.slots || { list: [], active_id: null, pending_id: null };
+
+            const list = document.getElementById('slotsList');
+            if (!list) return;
+            list.innerHTML = slots.list.map(slot => {
+                const cls = (slot.id === slots.active_id ? ' active' : '')
+                          + (slot.id === slots.pending_id ? ' pending' : '');
+                const chips = slot.loop_ids.length === 0
+                    ? '<span class="slot-empty">drop loops here…</span>'
+                    : slot.loop_ids.map(id => {
+                        const l = byId[id]; if (!l) return '';
+                        return `<span class="slot-chip">
+                            <span class="chip-dot" style="background:${l.color}"></span>${l.name}
+                            <span class="chip-x" onclick="removeLoopFromSlot(${slot.id}, ${id})">✕</span>
+                        </span>`;
+                      }).join('');
+                return `<div class="slot-row${cls}" ondragover="slotDragOver(event)"
+                            ondragleave="slotDragLeave(event)" ondrop="slotDrop(event, ${slot.id})">
+                    <button class="slot-launch" onclick="launchSlot(${slot.id})">▶</button>
+                    <div class="slot-loops">${chips}</div>
+                    <button class="slot-delete" onclick="deleteSlot(${slot.id})">✕</button>
+                </div>`;
+            }).join('');
+
+            const palette = document.getElementById('slotPalette');
+            palette.innerHTML = layers.map(l => `
+                <span class="palette-chip" draggable="true"
+                      ondragstart="event.dataTransfer.setData('text/plain', '${l.id}')">
+                    <span class="chip-dot" style="background:${l.color}"></span>${l.name}
+                </span>`).join('');
+        }
+
+        // =================================================================
         // SCENES
         // =================================================================
 
@@ -1587,6 +1657,9 @@
             // --- Scenes ---
             renderScenes();
 
+            // --- Slots ---
+            renderSlots();
+
             // --- Stats ---
             if (serverState.stats) {
                 const callbackMs = serverState.stats.callback_time_ms;
@@ -1695,6 +1768,7 @@
             if (panel) panel.classList.add('active');
 
             if (name === 'scale') renderFretboard();
+            if (name === 'slots') renderSlots();
         }
 
         // =================================================================

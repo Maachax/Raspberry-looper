@@ -78,7 +78,8 @@
                     onclick="setSidePanel('scale')" title="Scale / Fretboard">♩</button>
             <button class="side-icon" id="sideBtnMeters" data-panel="meters"
                     onclick="setSidePanel('meters')" title="Input / Boost">dB</button>
-            <button class="side-icon side-icon-stub" title="FX (coming soon)">FX</button>
+            <button class="side-icon" id="sideBtnSlots" data-panel="slots"
+                    onclick="setSidePanel('slots')" title="Slots / Launcher">▦</button>
             <button class="side-icon side-icon-stub" title="Art (coming soon)">✦</button>
         </div>
 
@@ -159,6 +160,15 @@
                         <span class="boost-value mono" id="outputGainValue">1.0×</span>
                     </div>
                 </div>
+            </div>
+
+            <!-- SLOTS panel -->
+            <div class="side-panel" id="panelSlots">
+                <div class="panel-header accent-primary"><span>SLOTS</span></div>
+                <div class="slots-list" id="slotsList"></div>
+                <button class="add-slot-btn" id="addSlotBtn" onclick="addSlot()">＋ add slot</button>
+                <div class="slot-palette-label">LOOPS — drag into a slot</div>
+                <div class="slot-palette" id="slotPalette"></div>
             </div>
 
         </div>
