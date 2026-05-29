@@ -78,7 +78,8 @@
                     onclick="setSidePanel('scale')" title="Scale / Fretboard">♩</button>
             <button class="side-icon" id="sideBtnMeters" data-panel="meters"
                     onclick="setSidePanel('meters')" title="Input / Boost">dB</button>
-            <button class="side-icon side-icon-stub" title="FX (coming soon)">FX</button>
+            <button class="side-icon" id="sideBtnSections" data-panel="sections"
+                    onclick="setSidePanel('sections')" title="Sections / Launcher">▦</button>
             <button class="side-icon side-icon-stub" title="Art (coming soon)">✦</button>
         </div>
 
@@ -161,6 +162,15 @@
                 </div>
             </div>
 
+            <!-- SECTIONS panel -->
+            <div class="side-panel" id="panelSections">
+                <div class="panel-header accent-primary"><span>SECTIONS</span></div>
+                <div class="sections-list" id="sectionsList"></div>
+                <button class="add-section-btn" id="addSectionBtn" onclick="addSection()">＋ add section</button>
+                <div class="section-palette-label">LOOPS — drag into a section</div>
+                <div class="section-palette" id="sectionPalette"></div>
+            </div>
+
         </div>
     </div>
 
@@ -237,33 +247,6 @@
                    min="0" max="1" step="0.01" value="0.8"
                    oninput="setMasterVolume(this.value)">
             <span class="master-volume-value" id="masterVolumeValue">80%</span>
-        </div>
-    </div>
-
-    <!-- Scenes -->
-    <div class="edit-section">
-        <div class="edit-section-header">SCENES</div>
-        <div class="save-scene-row">
-            <input type="text" id="sceneNameInput" class="scene-name-input"
-                   placeholder="Scene name..."
-                   onkeydown="if(event.key==='Enter') saveScene()"/>
-            <button class="btn btn-save-scene" onclick="saveScene()">SAVE</button>
-        </div>
-        <div id="scenesList"><div class="scenes-empty">No scenes saved yet</div></div>
-        <div class="collapse-controls">
-            <div class="collapse-row">
-                <label class="toggle-switch">
-                    <input type="checkbox" id="collapseToggle"
-                           onchange="setCollapseEnabled(this.checked)">
-                    <span class="toggle-slider"></span>
-                </label>
-                <span class="collapse-label">Auto-collapse after</span>
-                <input type="number" id="collapseTimeout" class="collapse-timeout-input"
-                       min="1" max="30" step="1" value="4"
-                       onchange="setCollapseTimeout(this.value)">
-                <span class="collapse-label">s</span>
-            </div>
-            <div class="collapse-hint" id="collapseHint"></div>
         </div>
     </div>
 

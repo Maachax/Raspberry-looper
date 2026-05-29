@@ -170,18 +170,11 @@ class WebLooper:
         self.input_peak = 0.0        # Peak hold (0–1)
         self._peak_hold_frames = 0   # Callback frames since last peak reset
 
-        # Scenes
-        self.scenes = {}           # {scene_id: scene_dict}
-        self._next_scene_id = 1
-        self.pending_scene = None  # Scene to apply at next loop restart
-
-        # Reactive scene collapse
-        self.collapse_enabled = False
-        self.collapse_scene_id = None   # int scene id to switch to on silence
-        self.collapse_timeout = 4.0     # seconds of silence before collapsing
-        self.collapse_threshold = 0.01  # RMS threshold (≈ -40dB)
-        self._silence_frames = 0        # consecutive silent callback frames
-        self._collapse_triggered = False  # True after collapse, reset when playing again
+        # Sections (launchable loop sets)
+        self.sections = []            # list of {'id': int, 'loop_ids': [int, ...]}
+        self._next_section_id = 1
+        self.pending_section = None   # section to apply at next loop restart
+        self.active_section_id = None # id of the section whose set is currently playing
 
         # Scale visualizer
         self.scale_root = 'A'
@@ -237,23 +230,6 @@ class WebLooper:
                         self.input_peak = max(self.input_peak * 0.994, rms)
 
                 # -------------------------------------------------------------
-                # REACTIVE SCENE COLLAPSE
-                # -------------------------------------------------------------
-                if (self.collapse_enabled
-                        and self.collapse_scene_id is not None
-                        and self.collapse_scene_id in self.scenes
-                        and self.state == LooperState.PLAYING):
-                    if rms < self.collapse_threshold:
-                        self._silence_frames += frames
-                        silence_secs = self._silence_frames / SAMPLE_RATE
-                        if silence_secs >= self.collapse_timeout and not self._collapse_triggered:
-                            self.pending_scene = self.scenes[self.collapse_scene_id]
-                            self._collapse_triggered = True
-                    else:
-                        self._silence_frames = 0
-                        self._collapse_triggered = False
-
-                # -------------------------------------------------------------
                 # STATE: RECORDING_MASTER
                 # -------------------------------------------------------------
                 if self.state == LooperState.RECORDING_MASTER:
@@ -306,10 +282,10 @@ class WebLooper:
                         self.master_position = (self.master_position + frames) % self.master_length
                         loop_restarted = self.master_position < old_position
 
-                        # Apply pending scene at loop restart (PLAYING state only)
-                        if loop_restarted and self.pending_scene is not None and self.state == LooperState.PLAYING:
-                            self._apply_scene(self.pending_scene)
-                            self.pending_scene = None
+                        # Apply pending section at loop restart (PLAYING state only)
+                        if loop_restarted and self.pending_section is not None and self.state == LooperState.PLAYING:
+                            self._apply_section(self.pending_section)
+                            self.pending_section = None
 
                         # Handle OVERDUB_ARMED → RECORDING_OVERDUB transition
                         if self.state == LooperState.OVERDUB_ARMED and loop_restarted:
@@ -510,7 +486,12 @@ class WebLooper:
             # Renumber remaining layers
             for i, layer in enumerate(self.layers):
                 layer.id = i
-            
+
+            # Remap sections: drop the deleted id; shift higher ids down by one
+            for section in self.sections:
+                section['loop_ids'] = [i - 1 if i > layer_id else i
+                                    for i in section['loop_ids'] if i != layer_id]
+
             print(f"✓ Deleted {name}")
             return True
 
@@ -537,101 +518,63 @@ class WebLooper:
             self.master_length = 0
             self.master_position = 0
             self.state = LooperState.IDLE
+            self.sections = []
+            self._next_section_id = 1
+            self.pending_section = None
+            self.active_section_id = None
             print("✓ All loops cleared")
             return True
 
     # -------------------------------------------------------------------------
-    # SCENE MANAGEMENT
+    # SECTION LAUNCHER
     # -------------------------------------------------------------------------
 
-    def save_scene(self, name: str) -> dict:
-        """Save current layer state as a named scene."""
+    def add_section(self) -> dict:
+        """Append a new empty section and return it."""
         with self.lock:
-            if not self.layers:
-                return {'success': False, 'error': 'No layers to save'}
+            section = {'id': self._next_section_id, 'loop_ids': []}
+            self._next_section_id += 1
+            self.sections.append(section)
+            return section
 
-            scene_id = self._next_scene_id
-            self._next_scene_id += 1
-
-            layer_states = [
-                {'id': layer.id, 'is_playing': layer.is_playing, 'volume': layer.volume}
-                for layer in self.layers
-            ]
-
-            scene = {
-                'id': scene_id,
-                'name': name.strip() or f'Scene {scene_id}',
-                'layer_states': layer_states,
-            }
-            self.scenes[scene_id] = scene
-            print(f"✓ Scene saved: '{scene['name']}' ({len(layer_states)} layers)")
-            return {'success': True, 'scene': scene}
-
-    def _apply_scene(self, scene: dict):
-        """Apply a scene's layer states. Must be called within lock."""
-        layer_map = {layer.id: layer for layer in self.layers}
-        for state in scene['layer_states']:
-            layer = layer_map.get(state['id'])
-            if layer:
-                layer.is_playing = state['is_playing']
-                layer.volume = state['volume']
-        print(f"✓ Scene applied: '{scene['name']}'")
-
-    def load_scene(self, scene_id: int, quantized: bool = True) -> bool:
-        """Load a scene. If quantized=True and playing, waits for next loop restart."""
+    def delete_section(self, section_id: int) -> bool:
+        """Delete a section. Clears pending/active references to it."""
         with self.lock:
-            scene = self.scenes.get(scene_id)
-            if not scene:
+            before = len(self.sections)
+            self.sections = [s for s in self.sections if s['id'] != section_id]
+            if self.pending_section and self.pending_section['id'] == section_id:
+                self.pending_section = None
+            if self.active_section_id == section_id:
+                self.active_section_id = None
+            return len(self.sections) < before
+
+    def set_section_loops(self, section_id: int, loop_ids: list) -> bool:
+        """Replace a section's loop set, keeping only ids of layers that exist."""
+        with self.lock:
+            section = next((s for s in self.sections if s['id'] == section_id), None)
+            if section is None:
                 return False
+            valid = {layer.id for layer in self.layers}
+            section['loop_ids'] = [int(i) for i in loop_ids if int(i) in valid]
+            return True
 
+    def _apply_section(self, section: dict):
+        """Turn on only the section's member loops. Must be called holding self.lock."""
+        ids = set(section['loop_ids'])
+        for layer in self.layers:
+            layer.is_playing = layer.id in ids
+        self.active_section_id = section['id']
+
+    def launch_section(self, section_id: int, quantized: bool = True) -> bool:
+        """Launch a section: queue for next loop restart if playing, else apply now."""
+        with self.lock:
+            section = next((s for s in self.sections if s['id'] == section_id), None)
+            if section is None:
+                return False
             if quantized and self.state == LooperState.PLAYING and self.master_length > 0:
-                self.pending_scene = scene
-                print(f"✓ Scene '{scene['name']}' scheduled for next loop restart")
+                self.pending_section = section
             else:
-                self._apply_scene(scene)
-            return True
-
-    def delete_scene(self, scene_id: int) -> bool:
-        """Delete a scene."""
-        with self.lock:
-            if scene_id not in self.scenes:
-                return False
-            name = self.scenes[scene_id]['name']
-            del self.scenes[scene_id]
-            if self.pending_scene and self.pending_scene['id'] == scene_id:
-                self.pending_scene = None
-            print(f"✓ Scene deleted: '{name}'")
-            return True
-
-    def rename_scene(self, scene_id: int, name: str) -> bool:
-        """Rename a scene."""
-        with self.lock:
-            if scene_id not in self.scenes:
-                return False
-            self.scenes[scene_id]['name'] = name.strip() or self.scenes[scene_id]['name']
-            return True
-
-    def set_collapse_scene(self, scene_id) -> bool:
-        """Designate a scene as the idle/collapse target. Pass None to clear."""
-        with self.lock:
-            if scene_id is not None and scene_id not in self.scenes:
-                return False
-            self.collapse_scene_id = scene_id
-            self._silence_frames = 0
-            self._collapse_triggered = False
-            status = f"scene {scene_id}" if scene_id else "cleared"
-            print(f"✓ Collapse scene {status}")
-            return True
-
-    def set_collapse_enabled(self, enabled: bool, timeout: float = None) -> bool:
-        """Enable/disable reactive scene collapse, optionally update timeout."""
-        with self.lock:
-            self.collapse_enabled = enabled
-            if timeout is not None:
-                self.collapse_timeout = max(1.0, float(timeout))
-            self._silence_frames = 0
-            self._collapse_triggered = False
-            print(f"✓ Collapse {'enabled' if enabled else 'disabled'} (timeout: {self.collapse_timeout}s)")
+                self._apply_section(section)
             return True
 
     # -------------------------------------------------------------------------
@@ -668,8 +611,8 @@ class WebLooper:
                     }
                     for l in self.layers
                 ],
-                'scenes': {str(k): v for k, v in self.scenes.items()},
-                'next_scene_id': self._next_scene_id,
+                'sections': [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.sections],
+                'next_section_id': self._next_section_id,
             }
             buffers = [(l.id, l.buffer[:l.length].copy()) for l in self.layers]
 
@@ -684,6 +627,41 @@ class WebLooper:
         except Exception as e:
             print(f"✗ Session save failed: {e}")
             return {'success': False, 'error': str(e)}
+
+    @staticmethod
+    def _sections_from_meta(meta: dict) -> tuple:
+        """Return (sections, next_section_id) from session meta. Migrates old 'scenes'.
+
+        Tolerant of malformed/partial meta: null values, missing keys, and
+        non-dict entries are skipped rather than raising. next_section_id is
+        always bumped past the highest section id to avoid id collisions.
+        """
+        sections_val = meta.get('sections')
+        if sections_val is None:
+            sections_val = meta.get('slots')  # branch-era key, same format
+        if sections_val is not None:
+            next_id_key = 'next_section_id' if 'next_section_id' in meta else 'next_slot_id'
+            sections = []
+            for s in sections_val:
+                if not isinstance(s, dict):
+                    continue
+                sections.append({
+                    'id': int(s.get('id', len(sections) + 1)),
+                    'loop_ids': [int(i) for i in (s.get('loop_ids') or [])],
+                })
+            next_id = max(int(meta.get(next_id_key) or 0),
+                          max([s['id'] for s in sections], default=0) + 1)
+            return sections, next_id
+        # Migrate legacy scenes: one section per scene, ids = its playing layers
+        sections = []
+        for scene in (meta.get('scenes') or {}).values():
+            if not isinstance(scene, dict):
+                continue
+            active = [st['id'] for st in scene.get('layer_states', [])
+                      if isinstance(st, dict) and st.get('is_playing')
+                      and st.get('id') is not None]
+            sections.append({'id': len(sections) + 1, 'loop_ids': active})
+        return sections, len(sections) + 1
 
     def load_session(self, session_id: str) -> dict:
         """Load a session from disk, replacing current state."""
@@ -726,10 +704,9 @@ class WebLooper:
             self.beats_per_bar = meta.get('beats_per_bar', 4)
             self.master_volume = meta.get('master_volume', 0.8)
 
-            raw_scenes = meta.get('scenes', {})
-            self.scenes = {int(k): v for k, v in raw_scenes.items()}
-            self._next_scene_id = meta.get('next_scene_id', len(self.scenes) + 1)
-            self.pending_scene = None
+            self.sections, self._next_section_id = self._sections_from_meta(meta)
+            self.pending_section = None
+            self.active_section_id = None
 
             self.state = LooperState.PLAYING
             print(f"✓ Session loaded: {meta['name']} ({len(self.layers)} layers)")
@@ -767,7 +744,7 @@ class WebLooper:
                     'created_at': meta.get('created_at', ''),
                     'bpm': meta.get('bpm', 0),
                     'layer_count': len(meta.get('layers', [])),
-                    'scene_count': len(meta.get('scenes', {})),
+                    'section_count': len(meta.get('sections', [])),
                 })
             except Exception:
                 continue
@@ -1433,14 +1410,12 @@ class WebLooper:
             num_layers = len(self.layers)
             input_level = self.input_level
             input_peak = self.input_peak
-            scenes_data = list(self.scenes.values())
-            pending_scene_id = self.pending_scene['id'] if self.pending_scene else None
-            collapse_enabled = self.collapse_enabled
-            collapse_scene_id = self.collapse_scene_id
-            collapse_timeout = self.collapse_timeout
             scale_root = self.scale_root
             scale_type = self.scale_type
-        
+            sections_data = [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.sections]
+            pending_section_id = self.pending_section['id'] if self.pending_section else None
+            active_section_id = self.active_section_id
+
         # Compute derived values WITHOUT lock
         position_ratio = 0.0
         current_time = 0.0
@@ -1509,14 +1484,10 @@ class WebLooper:
             },
             'input_level': input_level,
             'input_peak': input_peak,
-            'scenes': {
-                'list': scenes_data,
-                'pending_id': pending_scene_id,
-            },
-            'collapse': {
-                'enabled': collapse_enabled,
-                'scene_id': collapse_scene_id,
-                'timeout': collapse_timeout,
+            'sections': {
+                'list': sections_data,
+                'pending_id': pending_section_id,
+                'active_id': active_section_id,
             },
             'scale': {
                 'root': scale_root,

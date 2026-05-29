@@ -342,7 +342,6 @@
 
         // Render cache — skip innerHTML when data hasn't changed
         let _lastLayersJson = '';
-        let _lastScenesJson = '';
         
         // =================================================================
         // WEB AUDIO - METRONOME
@@ -613,10 +612,12 @@
             // Disable REC button during countdown
             document.getElementById('btnRec').disabled = true;
             
-            // Update status badge
+            // Update status badge (optional — element may not exist in current layout)
             const badge = document.getElementById('statusBadge');
-            badge.textContent = 'Get ready...';
-            badge.className = 'status-badge status-countdown';
+            if (badge) {
+                badge.textContent = 'Get ready...';
+                badge.className = 'status-badge status-countdown';
+            }
             
             // Show BPM
             bpmEl.textContent = `${localBpm} BPM`;
@@ -724,87 +725,78 @@
         }
 
         // =================================================================
-        // SCENES
+        // SECTIONS
         // =================================================================
 
-        function saveScene() {
-            const input = document.getElementById('sceneNameInput');
-            const name = input.value.trim();
-            sendCommand('save_scene', { name });
-            input.value = '';
+        function addSection() { sendCommand('add_section'); }
+        function deleteSection(sectionId) { sendCommand('delete_section', { section_id: sectionId }); }
+        function launchSection(sectionId) {
+            const quantized = serverState.state === 'playing';
+            sendCommand('launch_section', { section_id: sectionId, quantized });
+        }
+        function addLoopToSection(sectionId, loopId) {
+            const section = (serverState.sections?.list || []).find(s => s.id === sectionId);
+            if (!section || section.loop_ids.includes(loopId)) return;
+            sendCommand('set_section_loops', { section_id: sectionId, loop_ids: [...section.loop_ids, loopId] });
+        }
+        function removeLoopFromSection(sectionId, loopId) {
+            const section = (serverState.sections?.list || []).find(s => s.id === sectionId);
+            if (!section) return;
+            sendCommand('set_section_loops', { section_id: sectionId, loop_ids: section.loop_ids.filter(i => i !== loopId) });
+        }
+        function sectionDragOver(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drop-hover'); }
+        function sectionDragLeave(ev) { ev.currentTarget.classList.remove('drop-hover'); }
+        function sectionDrop(ev, sectionId) {
+            ev.preventDefault();
+            ev.currentTarget.classList.remove('drop-hover');
+            const loopId = parseInt(ev.dataTransfer.getData('text/plain'), 10);
+            if (!Number.isNaN(loopId)) addLoopToSection(sectionId, loopId);
         }
 
-        function loadScene(sceneId) {
-            const isPlaying = serverState.state === 'playing';
-            sendCommand('load_scene', { scene_id: sceneId, quantized: isPlaying });
-        }
+        let _lastSectionsJson = '';
+        function renderSections() {
+            const json = JSON.stringify(serverState.sections) + JSON.stringify(
+                (serverState.layers || []).map(l => [l.id, l.name, l.color, l.is_playing]));
+            if (json === _lastSectionsJson) return;
+            _lastSectionsJson = json;
 
-        function deleteScene(sceneId) {
-            if (confirm('Delete this scene?')) {
-                sendCommand('delete_scene', { scene_id: sceneId });
-            }
-        }
+            const layers = serverState.layers || [];
+            const byId = Object.fromEntries(layers.map(l => [l.id, l]));
+            const sections = serverState.sections || { list: [], active_id: null, pending_id: null };
 
-        function renderScenes() {
-            const _scenesJson = JSON.stringify(serverState.scenes) + (serverState.collapse?.scene_id ?? '');
-            if (_scenesJson === _lastScenesJson) return;
-            _lastScenesJson = _scenesJson;
+            // A section is "active" when its loop set matches what's currently playing.
+            // Computing it from live state means a manual layer toggle clears the highlight.
+            const playingKey = layers.filter(l => l.is_playing).map(l => l.id).sort((a, b) => a - b).join(',');
 
-            const scenesList = document.getElementById('scenesList');
-            if (!serverState.scenes || serverState.scenes.list.length === 0) {
-                scenesList.innerHTML = '<div class="scenes-empty">No scenes saved yet</div>';
-                updateCollapseControls();
-                return;
-            }
-
-            const pendingId = serverState.scenes.pending_id;
-            const collapseId = serverState.collapse?.scene_id ?? null;
-            scenesList.innerHTML = serverState.scenes.list.map(scene => {
-                const isPending = scene.id === pendingId;
-                const isCollapse = scene.id === collapseId;
-                const layerCount = scene.layer_states.length;
-                const activeCount = scene.layer_states.filter(l => l.is_playing).length;
-                return `
-                    <div class="scene-item ${isPending ? 'pending' : ''} ${isCollapse ? 'collapse-scene' : ''}">
-                        <div class="scene-name-display">${scene.name}</div>
-                        <span class="scene-layer-count">${activeCount}/${layerCount}</span>
-                        ${isPending ? '<span class="scene-pending-badge">queued</span>' : ''}
-                        ${isCollapse ? '<span class="scene-pending-badge" style="background:#2d4a3e;color:#38a169">idle</span>' : ''}
-                        <button class="btn btn-idle-scene" title="${isCollapse ? 'Clear idle scene' : 'Set as idle scene'}"
-                                onclick="setCollapseScene(${isCollapse ? 'null' : scene.id})">
-                            ${isCollapse ? '★' : '☆'}
-                        </button>
-                        <button class="btn btn-load-scene" onclick="loadScene(${scene.id})">LOAD</button>
-                        <button class="btn btn-delete-scene" onclick="deleteScene(${scene.id})">✕</button>
-                    </div>
-                `;
+            const list = document.getElementById('sectionsList');
+            if (!list) return;
+            list.innerHTML = sections.list.map(section => {
+                const sectionKey = [...section.loop_ids].sort((a, b) => a - b).join(',');
+                const cls = (sectionKey === playingKey ? ' active' : '')
+                          + (section.id === sections.pending_id ? ' pending' : '');
+                const chips = section.loop_ids.length === 0
+                    ? '<span class="section-empty">drop loops here…</span>'
+                    : section.loop_ids.map(id => {
+                        const l = byId[id]; if (!l) return '';
+                        return `<span class="section-chip">
+                            <span class="chip-dot" style="background:${l.color}"></span>${l.name}
+                            <span class="chip-x" onclick="removeLoopFromSection(${section.id}, ${id})">✕</span>
+                        </span>`;
+                      }).join('');
+                return `<div class="section-row${cls}" ondragover="sectionDragOver(event)"
+                            ondragleave="sectionDragLeave(event)" ondrop="sectionDrop(event, ${section.id})">
+                    <button class="section-launch" onclick="launchSection(${section.id})">▶</button>
+                    <div class="section-loops">${chips}</div>
+                    <button class="section-delete" onclick="deleteSection(${section.id})">✕</button>
+                </div>`;
             }).join('');
-            updateCollapseControls();
-        }
 
-        function updateCollapseControls() {
-            const collapse = serverState.collapse || {};
-            const toggle = document.getElementById('collapseToggle');
-            const timeoutEl = document.getElementById('collapseTimeout');
-            if (toggle) toggle.checked = collapse.enabled || false;
-            if (timeoutEl) timeoutEl.value = collapse.timeout || 4;
-            const hasScene = collapse.scene_id !== null && collapse.scene_id !== undefined;
-            const hint = document.getElementById('collapseHint');
-            if (hint) hint.textContent = hasScene ? '' : 'Star a scene above to enable';
-        }
-
-        function setCollapseScene(sceneId) {
-            sendCommand('set_collapse_scene', { scene_id: sceneId });
-        }
-
-        function setCollapseEnabled(enabled) {
-            const timeout = parseFloat(document.getElementById('collapseTimeout').value) || 4;
-            sendCommand('set_collapse_enabled', { enabled, timeout });
-        }
-
-        function setCollapseTimeout(timeout) {
-            const enabled = document.getElementById('collapseToggle').checked;
-            sendCommand('set_collapse_enabled', { enabled, timeout: parseFloat(timeout) });
+            const palette = document.getElementById('sectionPalette');
+            palette.innerHTML = layers.map(l => `
+                <span class="palette-chip" draggable="true"
+                      ondragstart="event.dataTransfer.setData('text/plain', '${l.id}')">
+                    <span class="chip-dot" style="background:${l.color}"></span>${l.name}
+                </span>`).join('');
         }
 
         // =================================================================
@@ -843,7 +835,7 @@
             el.innerHTML = sessionsList.map(s => {
                 const date = s.created_at ? new Date(s.created_at).toLocaleDateString() : '';
                 const bpm = s.bpm ? `${Math.round(s.bpm)} BPM · ` : '';
-                const meta = `${bpm}${s.layer_count} loop${s.layer_count !== 1 ? 's' : ''}${s.scene_count ? ` · ${s.scene_count} scenes` : ''} · ${date}`;
+                const meta = `${bpm}${s.layer_count} loop${s.layer_count !== 1 ? 's' : ''}${s.section_count ? ` · ${s.section_count} sections` : ''} · ${date}`;
                 return `
                     <div class="session-item">
                         <div class="session-info">
@@ -1584,8 +1576,8 @@
                 clipEl.textContent = peak > 0.95 ? 'CLIP' : '';
             }
 
-            // --- Scenes ---
-            renderScenes();
+            // --- Sections ---
+            renderSections();
 
             // --- Stats ---
             if (serverState.stats) {
@@ -1695,6 +1687,7 @@
             if (panel) panel.classList.add('active');
 
             if (name === 'scale') renderFretboard();
+            if (name === 'sections') renderSections();
         }
 
         // =================================================================

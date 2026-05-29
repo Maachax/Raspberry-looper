@@ -220,18 +220,6 @@ def handle_command(data):
         looper.rename_layer(data.get('layer_id', 0), data.get('name', ''))
     elif command == 'set_layer_color':
         looper.set_layer_color(data.get('layer_id', 0), data.get('color', '#667eea'))
-    elif command == 'save_scene':
-        looper.save_scene(data.get('name', ''))
-    elif command == 'load_scene':
-        looper.load_scene(data.get('scene_id'), data.get('quantized', True))
-    elif command == 'delete_scene':
-        looper.delete_scene(data.get('scene_id'))
-    elif command == 'rename_scene':
-        looper.rename_scene(data.get('scene_id'), data.get('name', ''))
-    elif command == 'set_collapse_scene':
-        looper.set_collapse_scene(data.get('scene_id'))
-    elif command == 'set_collapse_enabled':
-        looper.set_collapse_enabled(data.get('enabled', False), data.get('timeout'))
     elif command == 'save_session':
         result = looper.save_session(data.get('name', ''))
         emit('session_saved', result)
@@ -249,6 +237,14 @@ def handle_command(data):
         return
     elif command == 'set_scale':
         looper.set_scale(data.get('root', 'A'), data.get('scale_type', 'minor'))
+    elif command == 'add_section':
+        looper.add_section()
+    elif command == 'delete_section':
+        looper.delete_section(data.get('section_id'))
+    elif command == 'set_section_loops':
+        looper.set_section_loops(data.get('section_id'), data.get('loop_ids', []))
+    elif command == 'launch_section':
+        looper.launch_section(data.get('section_id'), data.get('quantized', True))
 
     # Broadcast updated state to all clients
     emit('update', looper.get_state(), broadcast=True)

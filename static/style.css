@@ -1974,3 +1974,44 @@ body.edit-mode .layer-expanded { display: flex; }
     margin-bottom: 3px;
 }
 .scale-explain-text { color: #c4cfde; font-size: 13px; line-height: 1.5; }
+
+/* ── SECTIONS panel ── */
+.sections-list { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+.section-row {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; padding: 6px 8px; min-height: 40px;
+}
+.section-row.drop-hover { border-color: #7cf; }
+.section-row.active { border-color: #7cf; box-shadow: inset 0 0 0 1px #7cf; }
+.section-row.pending { border-style: dashed; border-color: #7cf; }
+.section-launch {
+    width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%;
+    border: none; cursor: pointer; background: #2f3340; color: #7cf; font-size: 12px;
+}
+.section-row.active .section-launch { background: #7cf; color: #111; }
+.section-loops { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
+.section-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; background: #2f3340; border-radius: 5px; padding: 4px 7px;
+}
+.section-chip .chip-dot { width: 9px; height: 9px; border-radius: 50%; }
+.section-chip .chip-x { cursor: pointer; color: var(--text-muted); margin-left: 2px; }
+.section-empty { color: var(--text-muted); font-style: italic; font-size: 10px; }
+.section-delete { background: none; border: none; color: var(--text-muted); cursor: pointer; }
+.add-section-btn {
+    margin: 4px 8px; padding: 6px; width: calc(100% - 16px);
+    background: none; border: 1px dashed var(--border); border-radius: 7px;
+    color: #7cf; cursor: pointer; font-size: 11px;
+}
+.section-palette-label {
+    font-size: 9px; text-transform: uppercase; letter-spacing: .5px;
+    color: var(--text-muted); padding: 8px 8px 4px;
+}
+.section-palette { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 8px 10px; }
+.palette-chip {
+    display: inline-flex; align-items: center; gap: 5px; cursor: grab;
+    font-size: 11px; background: #2f3340; border: 1px dashed var(--border);
+    border-radius: 5px; padding: 4px 7px;
+}
+.palette-chip .chip-dot { width: 9px; height: 9px; border-radius: 50%; }
