@@ -725,73 +725,73 @@
         }
 
         // =================================================================
-        // SLOTS
+        // SECTIONS
         // =================================================================
 
-        function addSlot() { sendCommand('add_slot'); }
-        function deleteSlot(slotId) { sendCommand('delete_slot', { slot_id: slotId }); }
-        function launchSlot(slotId) {
+        function addSection() { sendCommand('add_section'); }
+        function deleteSection(sectionId) { sendCommand('delete_section', { section_id: sectionId }); }
+        function launchSection(sectionId) {
             const quantized = serverState.state === 'playing';
-            sendCommand('launch_slot', { slot_id: slotId, quantized });
+            sendCommand('launch_section', { section_id: sectionId, quantized });
         }
-        function addLoopToSlot(slotId, loopId) {
-            const slot = (serverState.slots?.list || []).find(s => s.id === slotId);
-            if (!slot || slot.loop_ids.includes(loopId)) return;
-            sendCommand('set_slot_loops', { slot_id: slotId, loop_ids: [...slot.loop_ids, loopId] });
+        function addLoopToSection(sectionId, loopId) {
+            const section = (serverState.sections?.list || []).find(s => s.id === sectionId);
+            if (!section || section.loop_ids.includes(loopId)) return;
+            sendCommand('set_section_loops', { section_id: sectionId, loop_ids: [...section.loop_ids, loopId] });
         }
-        function removeLoopFromSlot(slotId, loopId) {
-            const slot = (serverState.slots?.list || []).find(s => s.id === slotId);
-            if (!slot) return;
-            sendCommand('set_slot_loops', { slot_id: slotId, loop_ids: slot.loop_ids.filter(i => i !== loopId) });
+        function removeLoopFromSection(sectionId, loopId) {
+            const section = (serverState.sections?.list || []).find(s => s.id === sectionId);
+            if (!section) return;
+            sendCommand('set_section_loops', { section_id: sectionId, loop_ids: section.loop_ids.filter(i => i !== loopId) });
         }
-        function slotDragOver(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drop-hover'); }
-        function slotDragLeave(ev) { ev.currentTarget.classList.remove('drop-hover'); }
-        function slotDrop(ev, slotId) {
+        function sectionDragOver(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drop-hover'); }
+        function sectionDragLeave(ev) { ev.currentTarget.classList.remove('drop-hover'); }
+        function sectionDrop(ev, sectionId) {
             ev.preventDefault();
             ev.currentTarget.classList.remove('drop-hover');
             const loopId = parseInt(ev.dataTransfer.getData('text/plain'), 10);
-            if (!Number.isNaN(loopId)) addLoopToSlot(slotId, loopId);
+            if (!Number.isNaN(loopId)) addLoopToSection(sectionId, loopId);
         }
 
-        let _lastSlotsJson = '';
-        function renderSlots() {
-            const json = JSON.stringify(serverState.slots) + JSON.stringify(
+        let _lastSectionsJson = '';
+        function renderSections() {
+            const json = JSON.stringify(serverState.sections) + JSON.stringify(
                 (serverState.layers || []).map(l => [l.id, l.name, l.color, l.is_playing]));
-            if (json === _lastSlotsJson) return;
-            _lastSlotsJson = json;
+            if (json === _lastSectionsJson) return;
+            _lastSectionsJson = json;
 
             const layers = serverState.layers || [];
             const byId = Object.fromEntries(layers.map(l => [l.id, l]));
-            const slots = serverState.slots || { list: [], active_id: null, pending_id: null };
+            const sections = serverState.sections || { list: [], active_id: null, pending_id: null };
 
-            // A slot is "active" when its loop set matches what's currently playing.
+            // A section is "active" when its loop set matches what's currently playing.
             // Computing it from live state means a manual layer toggle clears the highlight.
             const playingKey = layers.filter(l => l.is_playing).map(l => l.id).sort((a, b) => a - b).join(',');
 
-            const list = document.getElementById('slotsList');
+            const list = document.getElementById('sectionsList');
             if (!list) return;
-            list.innerHTML = slots.list.map(slot => {
-                const slotKey = [...slot.loop_ids].sort((a, b) => a - b).join(',');
-                const cls = (slotKey === playingKey ? ' active' : '')
-                          + (slot.id === slots.pending_id ? ' pending' : '');
-                const chips = slot.loop_ids.length === 0
-                    ? '<span class="slot-empty">drop loops here…</span>'
-                    : slot.loop_ids.map(id => {
+            list.innerHTML = sections.list.map(section => {
+                const sectionKey = [...section.loop_ids].sort((a, b) => a - b).join(',');
+                const cls = (sectionKey === playingKey ? ' active' : '')
+                          + (section.id === sections.pending_id ? ' pending' : '');
+                const chips = section.loop_ids.length === 0
+                    ? '<span class="section-empty">drop loops here…</span>'
+                    : section.loop_ids.map(id => {
                         const l = byId[id]; if (!l) return '';
-                        return `<span class="slot-chip">
+                        return `<span class="section-chip">
                             <span class="chip-dot" style="background:${l.color}"></span>${l.name}
-                            <span class="chip-x" onclick="removeLoopFromSlot(${slot.id}, ${id})">✕</span>
+                            <span class="chip-x" onclick="removeLoopFromSection(${section.id}, ${id})">✕</span>
                         </span>`;
                       }).join('');
-                return `<div class="slot-row${cls}" ondragover="slotDragOver(event)"
-                            ondragleave="slotDragLeave(event)" ondrop="slotDrop(event, ${slot.id})">
-                    <button class="slot-launch" onclick="launchSlot(${slot.id})">▶</button>
-                    <div class="slot-loops">${chips}</div>
-                    <button class="slot-delete" onclick="deleteSlot(${slot.id})">✕</button>
+                return `<div class="section-row${cls}" ondragover="sectionDragOver(event)"
+                            ondragleave="sectionDragLeave(event)" ondrop="sectionDrop(event, ${section.id})">
+                    <button class="section-launch" onclick="launchSection(${section.id})">▶</button>
+                    <div class="section-loops">${chips}</div>
+                    <button class="section-delete" onclick="deleteSection(${section.id})">✕</button>
                 </div>`;
             }).join('');
 
-            const palette = document.getElementById('slotPalette');
+            const palette = document.getElementById('sectionPalette');
             palette.innerHTML = layers.map(l => `
                 <span class="palette-chip" draggable="true"
                       ondragstart="event.dataTransfer.setData('text/plain', '${l.id}')">
@@ -835,7 +835,7 @@
             el.innerHTML = sessionsList.map(s => {
                 const date = s.created_at ? new Date(s.created_at).toLocaleDateString() : '';
                 const bpm = s.bpm ? `${Math.round(s.bpm)} BPM · ` : '';
-                const meta = `${bpm}${s.layer_count} loop${s.layer_count !== 1 ? 's' : ''}${s.slot_count ? ` · ${s.slot_count} slots` : ''} · ${date}`;
+                const meta = `${bpm}${s.layer_count} loop${s.layer_count !== 1 ? 's' : ''}${s.section_count ? ` · ${s.section_count} sections` : ''} · ${date}`;
                 return `
                     <div class="session-item">
                         <div class="session-info">
@@ -1576,8 +1576,8 @@
                 clipEl.textContent = peak > 0.95 ? 'CLIP' : '';
             }
 
-            // --- Slots ---
-            renderSlots();
+            // --- Sections ---
+            renderSections();
 
             // --- Stats ---
             if (serverState.stats) {
@@ -1687,7 +1687,7 @@
             if (panel) panel.classList.add('active');
 
             if (name === 'scale') renderFretboard();
-            if (name === 'slots') renderSlots();
+            if (name === 'sections') renderSections();
         }
 
         // =================================================================

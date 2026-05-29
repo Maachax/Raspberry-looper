@@ -237,14 +237,14 @@ def handle_command(data):
         return
     elif command == 'set_scale':
         looper.set_scale(data.get('root', 'A'), data.get('scale_type', 'minor'))
-    elif command == 'add_slot':
-        looper.add_slot()
-    elif command == 'delete_slot':
-        looper.delete_slot(data.get('slot_id'))
-    elif command == 'set_slot_loops':
-        looper.set_slot_loops(data.get('slot_id'), data.get('loop_ids', []))
-    elif command == 'launch_slot':
-        looper.launch_slot(data.get('slot_id'), data.get('quantized', True))
+    elif command == 'add_section':
+        looper.add_section()
+    elif command == 'delete_section':
+        looper.delete_section(data.get('section_id'))
+    elif command == 'set_section_loops':
+        looper.set_section_loops(data.get('section_id'), data.get('loop_ids', []))
+    elif command == 'launch_section':
+        looper.launch_section(data.get('section_id'), data.get('quantized', True))
 
     # Broadcast updated state to all clients
     emit('update', looper.get_state(), broadcast=True)

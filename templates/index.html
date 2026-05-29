@@ -78,8 +78,8 @@
                     onclick="setSidePanel('scale')" title="Scale / Fretboard">♩</button>
             <button class="side-icon" id="sideBtnMeters" data-panel="meters"
                     onclick="setSidePanel('meters')" title="Input / Boost">dB</button>
-            <button class="side-icon" id="sideBtnSlots" data-panel="slots"
-                    onclick="setSidePanel('slots')" title="Slots / Launcher">▦</button>
+            <button class="side-icon" id="sideBtnSections" data-panel="sections"
+                    onclick="setSidePanel('sections')" title="Sections / Launcher">▦</button>
             <button class="side-icon side-icon-stub" title="Art (coming soon)">✦</button>
         </div>
 
@@ -162,13 +162,13 @@
                 </div>
             </div>
 
-            <!-- SLOTS panel -->
-            <div class="side-panel" id="panelSlots">
-                <div class="panel-header accent-primary"><span>SLOTS</span></div>
-                <div class="slots-list" id="slotsList"></div>
-                <button class="add-slot-btn" id="addSlotBtn" onclick="addSlot()">＋ add slot</button>
-                <div class="slot-palette-label">LOOPS — drag into a slot</div>
-                <div class="slot-palette" id="slotPalette"></div>
+            <!-- SECTIONS panel -->
+            <div class="side-panel" id="panelSections">
+                <div class="panel-header accent-primary"><span>SECTIONS</span></div>
+                <div class="sections-list" id="sectionsList"></div>
+                <button class="add-section-btn" id="addSectionBtn" onclick="addSection()">＋ add section</button>
+                <div class="section-palette-label">LOOPS — drag into a section</div>
+                <div class="section-palette" id="sectionPalette"></div>
             </div>
 
         </div>

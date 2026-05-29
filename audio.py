@@ -170,11 +170,11 @@ class WebLooper:
         self.input_peak = 0.0        # Peak hold (0–1)
         self._peak_hold_frames = 0   # Callback frames since last peak reset
 
-        # Slots (launchable loop sets)
-        self.slots = []            # list of {'id': int, 'loop_ids': [int, ...]}
-        self._next_slot_id = 1
-        self.pending_slot = None   # slot to apply at next loop restart
-        self.active_slot_id = None # id of the slot whose set is currently playing
+        # Sections (launchable loop sets)
+        self.sections = []            # list of {'id': int, 'loop_ids': [int, ...]}
+        self._next_section_id = 1
+        self.pending_section = None   # section to apply at next loop restart
+        self.active_section_id = None # id of the section whose set is currently playing
 
         # Scale visualizer
         self.scale_root = 'A'
@@ -282,10 +282,10 @@ class WebLooper:
                         self.master_position = (self.master_position + frames) % self.master_length
                         loop_restarted = self.master_position < old_position
 
-                        # Apply pending slot at loop restart (PLAYING state only)
-                        if loop_restarted and self.pending_slot is not None and self.state == LooperState.PLAYING:
-                            self._apply_slot(self.pending_slot)
-                            self.pending_slot = None
+                        # Apply pending section at loop restart (PLAYING state only)
+                        if loop_restarted and self.pending_section is not None and self.state == LooperState.PLAYING:
+                            self._apply_section(self.pending_section)
+                            self.pending_section = None
 
                         # Handle OVERDUB_ARMED → RECORDING_OVERDUB transition
                         if self.state == LooperState.OVERDUB_ARMED and loop_restarted:
@@ -487,10 +487,10 @@ class WebLooper:
             for i, layer in enumerate(self.layers):
                 layer.id = i
 
-            # Remap slots: drop the deleted id; shift higher ids down by one
-            for slot in self.slots:
-                slot['loop_ids'] = [i - 1 if i > layer_id else i
-                                    for i in slot['loop_ids'] if i != layer_id]
+            # Remap sections: drop the deleted id; shift higher ids down by one
+            for section in self.sections:
+                section['loop_ids'] = [i - 1 if i > layer_id else i
+                                    for i in section['loop_ids'] if i != layer_id]
 
             print(f"✓ Deleted {name}")
             return True
@@ -518,63 +518,63 @@ class WebLooper:
             self.master_length = 0
             self.master_position = 0
             self.state = LooperState.IDLE
-            self.slots = []
-            self._next_slot_id = 1
-            self.pending_slot = None
-            self.active_slot_id = None
+            self.sections = []
+            self._next_section_id = 1
+            self.pending_section = None
+            self.active_section_id = None
             print("✓ All loops cleared")
             return True
 
     # -------------------------------------------------------------------------
-    # SLOT LAUNCHER
+    # SECTION LAUNCHER
     # -------------------------------------------------------------------------
 
-    def add_slot(self) -> dict:
-        """Append a new empty slot and return it."""
+    def add_section(self) -> dict:
+        """Append a new empty section and return it."""
         with self.lock:
-            slot = {'id': self._next_slot_id, 'loop_ids': []}
-            self._next_slot_id += 1
-            self.slots.append(slot)
-            return slot
+            section = {'id': self._next_section_id, 'loop_ids': []}
+            self._next_section_id += 1
+            self.sections.append(section)
+            return section
 
-    def delete_slot(self, slot_id: int) -> bool:
-        """Delete a slot. Clears pending/active references to it."""
+    def delete_section(self, section_id: int) -> bool:
+        """Delete a section. Clears pending/active references to it."""
         with self.lock:
-            before = len(self.slots)
-            self.slots = [s for s in self.slots if s['id'] != slot_id]
-            if self.pending_slot and self.pending_slot['id'] == slot_id:
-                self.pending_slot = None
-            if self.active_slot_id == slot_id:
-                self.active_slot_id = None
-            return len(self.slots) < before
+            before = len(self.sections)
+            self.sections = [s for s in self.sections if s['id'] != section_id]
+            if self.pending_section and self.pending_section['id'] == section_id:
+                self.pending_section = None
+            if self.active_section_id == section_id:
+                self.active_section_id = None
+            return len(self.sections) < before
 
-    def set_slot_loops(self, slot_id: int, loop_ids: list) -> bool:
-        """Replace a slot's loop set, keeping only ids of layers that exist."""
+    def set_section_loops(self, section_id: int, loop_ids: list) -> bool:
+        """Replace a section's loop set, keeping only ids of layers that exist."""
         with self.lock:
-            slot = next((s for s in self.slots if s['id'] == slot_id), None)
-            if slot is None:
+            section = next((s for s in self.sections if s['id'] == section_id), None)
+            if section is None:
                 return False
             valid = {layer.id for layer in self.layers}
-            slot['loop_ids'] = [int(i) for i in loop_ids if int(i) in valid]
+            section['loop_ids'] = [int(i) for i in loop_ids if int(i) in valid]
             return True
 
-    def _apply_slot(self, slot: dict):
-        """Turn on only the slot's member loops. Must be called holding self.lock."""
-        ids = set(slot['loop_ids'])
+    def _apply_section(self, section: dict):
+        """Turn on only the section's member loops. Must be called holding self.lock."""
+        ids = set(section['loop_ids'])
         for layer in self.layers:
             layer.is_playing = layer.id in ids
-        self.active_slot_id = slot['id']
+        self.active_section_id = section['id']
 
-    def launch_slot(self, slot_id: int, quantized: bool = True) -> bool:
-        """Launch a slot: queue for next loop restart if playing, else apply now."""
+    def launch_section(self, section_id: int, quantized: bool = True) -> bool:
+        """Launch a section: queue for next loop restart if playing, else apply now."""
         with self.lock:
-            slot = next((s for s in self.slots if s['id'] == slot_id), None)
-            if slot is None:
+            section = next((s for s in self.sections if s['id'] == section_id), None)
+            if section is None:
                 return False
             if quantized and self.state == LooperState.PLAYING and self.master_length > 0:
-                self.pending_slot = slot
+                self.pending_section = section
             else:
-                self._apply_slot(slot)
+                self._apply_section(section)
             return True
 
     # -------------------------------------------------------------------------
@@ -611,8 +611,8 @@ class WebLooper:
                     }
                     for l in self.layers
                 ],
-                'slots': [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.slots],
-                'next_slot_id': self._next_slot_id,
+                'sections': [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.sections],
+                'next_section_id': self._next_section_id,
             }
             buffers = [(l.id, l.buffer[:l.length].copy()) for l in self.layers]
 
@@ -629,36 +629,39 @@ class WebLooper:
             return {'success': False, 'error': str(e)}
 
     @staticmethod
-    def _slots_from_meta(meta: dict) -> tuple:
-        """Return (slots, next_slot_id) from session meta. Migrates old 'scenes'.
+    def _sections_from_meta(meta: dict) -> tuple:
+        """Return (sections, next_section_id) from session meta. Migrates old 'scenes'.
 
         Tolerant of malformed/partial meta: null values, missing keys, and
-        non-dict entries are skipped rather than raising. next_slot_id is
-        always bumped past the highest slot id to avoid id collisions.
+        non-dict entries are skipped rather than raising. next_section_id is
+        always bumped past the highest section id to avoid id collisions.
         """
-        slots_val = meta.get('slots')
-        if slots_val is not None:
-            slots = []
-            for s in slots_val:
+        sections_val = meta.get('sections')
+        if sections_val is None:
+            sections_val = meta.get('slots')  # branch-era key, same format
+        if sections_val is not None:
+            next_id_key = 'next_section_id' if 'next_section_id' in meta else 'next_slot_id'
+            sections = []
+            for s in sections_val:
                 if not isinstance(s, dict):
                     continue
-                slots.append({
-                    'id': int(s.get('id', len(slots) + 1)),
+                sections.append({
+                    'id': int(s.get('id', len(sections) + 1)),
                     'loop_ids': [int(i) for i in (s.get('loop_ids') or [])],
                 })
-            next_id = max(int(meta.get('next_slot_id') or 0),
-                          max([s['id'] for s in slots], default=0) + 1)
-            return slots, next_id
-        # Migrate legacy scenes: one slot per scene, ids = its playing layers
-        slots = []
+            next_id = max(int(meta.get(next_id_key) or 0),
+                          max([s['id'] for s in sections], default=0) + 1)
+            return sections, next_id
+        # Migrate legacy scenes: one section per scene, ids = its playing layers
+        sections = []
         for scene in (meta.get('scenes') or {}).values():
             if not isinstance(scene, dict):
                 continue
             active = [st['id'] for st in scene.get('layer_states', [])
                       if isinstance(st, dict) and st.get('is_playing')
                       and st.get('id') is not None]
-            slots.append({'id': len(slots) + 1, 'loop_ids': active})
-        return slots, len(slots) + 1
+            sections.append({'id': len(sections) + 1, 'loop_ids': active})
+        return sections, len(sections) + 1
 
     def load_session(self, session_id: str) -> dict:
         """Load a session from disk, replacing current state."""
@@ -701,9 +704,9 @@ class WebLooper:
             self.beats_per_bar = meta.get('beats_per_bar', 4)
             self.master_volume = meta.get('master_volume', 0.8)
 
-            self.slots, self._next_slot_id = self._slots_from_meta(meta)
-            self.pending_slot = None
-            self.active_slot_id = None
+            self.sections, self._next_section_id = self._sections_from_meta(meta)
+            self.pending_section = None
+            self.active_section_id = None
 
             self.state = LooperState.PLAYING
             print(f"✓ Session loaded: {meta['name']} ({len(self.layers)} layers)")
@@ -741,7 +744,7 @@ class WebLooper:
                     'created_at': meta.get('created_at', ''),
                     'bpm': meta.get('bpm', 0),
                     'layer_count': len(meta.get('layers', [])),
-                    'slot_count': len(meta.get('slots', [])),
+                    'section_count': len(meta.get('sections', [])),
                 })
             except Exception:
                 continue
@@ -1409,9 +1412,9 @@ class WebLooper:
             input_peak = self.input_peak
             scale_root = self.scale_root
             scale_type = self.scale_type
-            slots_data = [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.slots]
-            pending_slot_id = self.pending_slot['id'] if self.pending_slot else None
-            active_slot_id = self.active_slot_id
+            sections_data = [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.sections]
+            pending_section_id = self.pending_section['id'] if self.pending_section else None
+            active_section_id = self.active_section_id
 
         # Compute derived values WITHOUT lock
         position_ratio = 0.0
@@ -1481,10 +1484,10 @@ class WebLooper:
             },
             'input_level': input_level,
             'input_peak': input_peak,
-            'slots': {
-                'list': slots_data,
-                'pending_id': pending_slot_id,
-                'active_id': active_slot_id,
+            'sections': {
+                'list': sections_data,
+                'pending_id': pending_section_id,
+                'active_id': active_section_id,
             },
             'scale': {
                 'root': scale_root,
