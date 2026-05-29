@@ -805,6 +805,7 @@
         let fxLoopId = 0;        // which loop's chain we're editing
         let fxScopeSection = false;  // false = loop default, true = active section override
         let fxActiveIdx = 0;     // selected effect index in the chain
+        let _lastFxJson = '';    // dirty-check so polls don't clobber sliders mid-drag
 
         function fxActiveSection() {
             const sid = serverState.sections?.active_id;
@@ -834,8 +835,7 @@
             const sec = fxActiveSection();
             if (sec) sendCommand('fx_clear_section_override', { section_id: sec.id, layer_id: fxLoopId });
         }
-        function fxAddEffect() {
-            const type = prompt('Add effect: reverb, delay, chorus, distortion, filter');
+        function fxAddEffect(type) {
             if (!type || !serverState.fx?.schemas[type]) return;
             const params = {}; serverState.fx.schemas[type].forEach(p => params[p.name] = p.default);
             fxCommitChain([...fxCurrentChain(), { type, params, enabled: true }]);
@@ -867,6 +867,17 @@
             if (!panel || !panel.classList.contains('active')) return;
             const layers = serverState.layers || [];
             if (!layers.some(l => l.id === fxLoopId)) fxLoopId = layers.length ? layers[0].id : 0;
+            const schemas = serverState.fx?.schemas || {};
+
+            // Only rebuild when something that affects this panel actually changed,
+            // otherwise the 100ms state poll would reset sliders/dropdowns mid-interaction.
+            const key = JSON.stringify([
+                layers.map(l => [l.id, l.name, l.fx_chain]),
+                serverState.sections, serverState.fx?.master_bus,
+                fxLoopId, fxScopeSection, fxActiveIdx,
+            ]);
+            if (key === _lastFxJson) return;
+            _lastFxJson = key;
 
             document.getElementById('fxLoopSelect').innerHTML = layers.map(l =>
                 `<option value="${l.id}" ${l.id === fxLoopId ? 'selected' : ''}>${l.name}</option>`).join('');
@@ -886,9 +897,12 @@
                     <span onclick="event.stopPropagation();fxMoveEffect(${i},-1)">‹</span>${e.type}
                     <span onclick="event.stopPropagation();fxMoveEffect(${i},1)">›</span>
                     <span class="fx-x" onclick="event.stopPropagation();fxRemoveEffect(${i})">✕</span>
-                </span>`).join('') + `<button class="fx-add" onclick="fxAddEffect()">＋ add</button>`;
+                </span>`).join('') +
+                `<select class="fx-add" onchange="fxAddEffect(this.value);this.selectedIndex=0">
+                    <option value="">＋ add</option>
+                    ${Object.keys(schemas).map(t => `<option value="${t}">${t}</option>`).join('')}
+                 </select>`;
 
-            const schemas = serverState.fx?.schemas || {};
             const sel = chain[fxActiveIdx];
             document.getElementById('fxParams').innerHTML = (sel && schemas[sel.type]) ? schemas[sel.type].map(p => {
                 const v = sel.params[p.name];
