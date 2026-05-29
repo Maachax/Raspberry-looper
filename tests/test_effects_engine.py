@@ -72,3 +72,32 @@ def test_session_roundtrip_preserves_chain(tmp_path, monkeypatch):
     looper2 = WebLooper()
     assert looper2.load_session(res['session_id'])['success']
     assert looper2.layers[0].fx_chain[0]['type'] == 'chorus'
+
+
+def _two_layer_looper():
+    looper = WebLooper()
+    looper.layers = [LoopLayer(0, "Master", _tone(440)), LoopLayer(1, "L1", _tone(8000))]
+    looper.master_length = looper.layers[0].length
+    looper.state = LooperState.PLAYING
+    return looper
+
+
+def test_apply_section_uses_override_else_default():
+    looper = _two_layer_looper()
+    looper.set_loop_chain(1, [effects.default_effect('distortion')])
+    sec = looper.add_section()
+    looper.set_section_loops(sec['id'], [0, 1])
+    f = effects.default_effect('filter'); f['params'].update({'mode': 'LP', 'cutoff_hz': 500.0})
+    looper.set_section_override(sec['id'], 1, [f])
+    looper._apply_section(sec)
+    expected = looper._wet_for(looper.layers[1].dry, [f])
+    assert np.array_equal(looper.layers[1].buffer, expected)
+
+
+def test_clear_section_override_reverts_to_default():
+    looper = _two_layer_looper()
+    sec = looper.add_section(); looper.set_section_loops(sec['id'], [0, 1])
+    looper.set_section_override(sec['id'], 1, [effects.default_effect('reverb')])
+    assert sec['fx_overrides'].get(1) is not None
+    looper.clear_section_override(sec['id'], 1)
+    assert 1 not in sec['fx_overrides']

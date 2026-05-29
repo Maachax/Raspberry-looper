@@ -108,7 +108,7 @@ def test_get_state_includes_sections_block():
     looper.set_section_loops(section['id'], [0])
     looper._apply_section(section)
     state = looper.get_state()
-    assert state['sections']['list'] == [{'id': section['id'], 'loop_ids': [0]}]
+    assert state['sections']['list'] == [{'id': section['id'], 'loop_ids': [0], 'fx_overrides': {}}]
     assert state['sections']['active_id'] == section['id']
     assert state['sections']['pending_id'] is None
 
@@ -116,7 +116,7 @@ def test_sections_from_meta_reads_sections_when_present():
     meta = {'sections': [{'id': 1, 'loop_ids': [0, 2]}, {'id': 5, 'loop_ids': []}],
             'next_section_id': 6}
     sections, next_id = WebLooper._sections_from_meta(meta)
-    assert sections == [{'id': 1, 'loop_ids': [0, 2]}, {'id': 5, 'loop_ids': []}]
+    assert sections == [{'id': 1, 'loop_ids': [0, 2], 'fx_overrides': {}}, {'id': 5, 'loop_ids': [], 'fx_overrides': {}}]
     assert next_id == 6
 
 def test_sections_from_meta_migrates_old_scenes():
@@ -129,7 +129,7 @@ def test_sections_from_meta_migrates_old_scenes():
             {'id': 1, 'is_playing': True, 'volume': 1.0}]},
     }}
     sections, next_id = WebLooper._sections_from_meta(meta)
-    assert sections == [{'id': 1, 'loop_ids': [0]}, {'id': 2, 'loop_ids': [0, 1]}]
+    assert sections == [{'id': 1, 'loop_ids': [0], 'fx_overrides': {}}, {'id': 2, 'loop_ids': [0, 1], 'fx_overrides': {}}]
     assert next_id == 3
 
 def test_sections_from_meta_empty_when_neither_present():
@@ -140,7 +140,7 @@ def test_sections_from_meta_empty_when_neither_present():
 def test_sections_from_meta_tolerates_null_and_missing_fields():
     assert WebLooper._sections_from_meta({'sections': None}) == ([], 1)
     sections, next_id = WebLooper._sections_from_meta({'sections': [{'id': 3}], 'next_section_id': 4})
-    assert sections == [{'id': 3, 'loop_ids': []}]
+    assert sections == [{'id': 3, 'loop_ids': [], 'fx_overrides': {}}]
     assert next_id == 4
 
 def test_sections_from_meta_guards_stale_next_id():
@@ -152,5 +152,5 @@ def test_sections_from_meta_skips_non_dict_scene_entries():
     meta = {'scenes': {'1': 'garbage',
                        '2': {'layer_states': [{'id': 0, 'is_playing': True}]}}}
     sections, next_id = WebLooper._sections_from_meta(meta)
-    assert sections == [{'id': 1, 'loop_ids': [0]}]
+    assert sections == [{'id': 1, 'loop_ids': [0], 'fx_overrides': {}}]
     assert next_id == 2

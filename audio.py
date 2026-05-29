@@ -569,7 +569,7 @@ class WebLooper:
     def add_section(self) -> dict:
         """Append a new empty section and return it."""
         with self.lock:
-            section = {'id': self._next_section_id, 'loop_ids': []}
+            section = {'id': self._next_section_id, 'loop_ids': [], 'fx_overrides': {}}
             self._next_section_id += 1
             self.sections.append(section)
             return section
@@ -595,11 +595,41 @@ class WebLooper:
             section['loop_ids'] = [int(i) for i in loop_ids if int(i) in valid]
             return True
 
+    def set_section_override(self, section_id: int, loop_id: int, chain: list) -> bool:
+        """Override a loop's chain for one section."""
+        with self.lock:
+            section = next((s for s in self.sections if s['id'] == section_id), None)
+            if section is None:
+                return False
+            section.setdefault('fx_overrides', {})[loop_id] = chain
+            if self.active_section_id == section_id:
+                layer = next((l for l in self.layers if l.id == loop_id), None)
+                if layer is not None:
+                    self._rebake_layer(layer, chain)
+            return True
+
+    def clear_section_override(self, section_id: int, loop_id: int) -> bool:
+        """Revert a section override back to the loop default."""
+        with self.lock:
+            section = next((s for s in self.sections if s['id'] == section_id), None)
+            if section is None:
+                return False
+            section.get('fx_overrides', {}).pop(loop_id, None)
+            if self.active_section_id == section_id:
+                layer = next((l for l in self.layers if l.id == loop_id), None)
+                if layer is not None:
+                    self._rebake_layer(layer, layer.fx_chain)
+            return True
+
     def _apply_section(self, section: dict):
-        """Turn on only the section's member loops. Must be called holding self.lock."""
+        """Activate the section's loops and bake each to its resolved chain. Holds lock."""
+        import effects
         ids = set(section['loop_ids'])
+        overrides = section.get('fx_overrides', {})
         for layer in self.layers:
             layer.is_playing = layer.id in ids
+            chain = effects.resolve_chain(layer.fx_chain, overrides.get(layer.id))
+            self._rebake_layer(layer, chain)
         self.active_section_id = section['id']
 
     def launch_section(self, section_id: int, quantized: bool = True) -> bool:
@@ -649,7 +679,8 @@ class WebLooper:
                     }
                     for l in self.layers
                 ],
-                'sections': [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.sections],
+                'sections': [{'id': s['id'], 'loop_ids': list(s['loop_ids']),
+                              'fx_overrides': s.get('fx_overrides', {})} for s in self.sections],
                 'next_section_id': self._next_section_id,
             }
             buffers = [(l.id, l.buffer[:l.length].copy()) for l in self.layers]
@@ -686,6 +717,7 @@ class WebLooper:
                 sections.append({
                     'id': int(s.get('id', len(sections) + 1)),
                     'loop_ids': [int(i) for i in (s.get('loop_ids') or [])],
+                    'fx_overrides': {int(k): v for k, v in (s.get('fx_overrides') or {}).items()},
                 })
             next_id = max(int(meta.get(next_id_key) or 0),
                           max([s['id'] for s in sections], default=0) + 1)
@@ -698,7 +730,7 @@ class WebLooper:
             active = [st['id'] for st in scene.get('layer_states', [])
                       if isinstance(st, dict) and st.get('is_playing')
                       and st.get('id') is not None]
-            sections.append({'id': len(sections) + 1, 'loop_ids': active})
+            sections.append({'id': len(sections) + 1, 'loop_ids': active, 'fx_overrides': {}})
         return sections, len(sections) + 1
 
     def load_session(self, session_id: str) -> dict:
@@ -1452,7 +1484,8 @@ class WebLooper:
             input_peak = self.input_peak
             scale_root = self.scale_root
             scale_type = self.scale_type
-            sections_data = [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.sections]
+            sections_data = [{'id': s['id'], 'loop_ids': list(s['loop_ids']),
+                              'fx_overrides': s.get('fx_overrides', {})} for s in self.sections]
             pending_section_id = self.pending_section['id'] if self.pending_section else None
             active_section_id = self.active_section_id
 
