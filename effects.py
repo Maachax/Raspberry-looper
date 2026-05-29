@@ -7,6 +7,12 @@ import hashlib
 import json
 import numpy as np
 
+try:
+    import pedalboard as _pb  # noqa: F401  (probe only; functions import lazily)
+    PEDALBOARD_AVAILABLE = True
+except ImportError:
+    PEDALBOARD_AVAILABLE = False
+
 # Each param is numeric {name, min, max, default, unit} or enum {name, options, default}.
 EFFECT_SCHEMAS = {
     'reverb': [
@@ -90,7 +96,7 @@ def render_wet(dry: np.ndarray, chain: list, sample_rate: int) -> np.ndarray:
     chain returns an untouched copy of dry.
     """
     active = [e for e in (chain or []) if e.get('enabled', True)]
-    if not active or len(dry) == 0:
+    if not active or len(dry) == 0 or not PEDALBOARD_AVAILABLE:
         return dry.copy()
     board = make_pedalboard(active)
     n = len(dry)
@@ -100,7 +106,9 @@ def render_wet(dry: np.ndarray, chain: list, sample_rate: int) -> np.ndarray:
 
 
 def make_bus_reverb(params: dict):
-    """A persistent single-Reverb pedalboard for the live master bus."""
+    """A persistent single-Reverb pedalboard for the live master bus (None if unavailable)."""
+    if not PEDALBOARD_AVAILABLE:
+        return None
     import pedalboard as pb
     return pb.Pedalboard([pb.Reverb(room_size=params['room_size'], damping=params['damping'],
                                     wet_level=params['wet'], dry_level=1.0 - params['wet'])])

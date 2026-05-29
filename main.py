@@ -126,4 +126,9 @@ if __name__ == "__main__":
         print("   sudo apt install ffmpeg (Linux)")
         print("   brew install ffmpeg (macOS)\n")
 
+    from effects import PEDALBOARD_AVAILABLE
+    if not PEDALBOARD_AVAILABLE:
+        print("\n💡 Tip: Install pedalboard for audio effects (loops play dry without it):")
+        print("   pip install pedalboard\n")
+
     main()

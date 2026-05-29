@@ -383,6 +383,11 @@ class WebLooper:
         cached = self.wet_cache.get(key)
         if cached is None:
             cached = effects.render_wet(dry, chain, SAMPLE_RATE)
+            if len(self.wet_cache) >= 64:        # bound memory in long tweak sessions
+                try:
+                    self.wet_cache.pop(next(iter(self.wet_cache)))
+                except (StopIteration, RuntimeError):
+                    pass
             self.wet_cache[key] = cached
         return cached
 
@@ -677,15 +682,33 @@ class WebLooper:
         self._refresh_bus_reverb(effective_bus)
 
     def launch_section(self, section_id: int, quantized: bool = True) -> bool:
-        """Launch a section: queue for next loop restart if playing, else apply now."""
+        """Launch a section: queue for next loop restart if playing, else apply now.
+
+        Wet buffers for the section's resolved chains are pre-rendered OUTSIDE the
+        lock so the audio callback only does cache lookups when it applies the
+        pending section at the loop wrap (no DSP render on the real-time thread).
+        """
+        import effects
         with self.lock:
             section = next((s for s in self.sections if s['id'] == section_id), None)
             if section is None:
                 return False
-            if quantized and self.state == LooperState.PLAYING and self.master_length > 0:
-                self.pending_section = section
-            else:
+            apply_now = not (quantized and self.state == LooperState.PLAYING and self.master_length > 0)
+            overrides = section.get('fx_overrides', {})
+            todo = [(l.dry, effects.resolve_chain(l.fx_chain, overrides.get(l.id))) for l in self.layers]
+
+        # Pre-render outside the lock (heavy) so the callback hits warm cache.
+        for dry, chain in todo:
+            self._wet_for(dry, chain)
+
+        with self.lock:
+            section = next((s for s in self.sections if s['id'] == section_id), None)
+            if section is None:
+                return False
+            if apply_now:
                 self._apply_section(section)
+            else:
+                self.pending_section = section
             return True
 
     # -------------------------------------------------------------------------
@@ -1534,6 +1557,7 @@ class WebLooper:
                               'fx_overrides': s.get('fx_overrides', {})} for s in self.sections]
             pending_section_id = self.pending_section['id'] if self.pending_section else None
             active_section_id = self.active_section_id
+            master_bus = self.master_bus
 
         # Compute derived values WITHOUT lock
         position_ratio = 0.0
@@ -1610,7 +1634,7 @@ class WebLooper:
             },
             'fx': {
                 'schemas': __import__('effects').EFFECT_SCHEMAS,
-                'master_bus': self.master_bus,
+                'master_bus': master_bus,
             },
             'scale': {
                 'root': scale_root,

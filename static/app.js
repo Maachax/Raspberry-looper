@@ -858,7 +858,8 @@
         }
         function fxToggleBus(on) {
             if (!on) { sendCommand('fx_set_bus', { section_id: null, effect: null }); return; }
-            fxSetBusParam('room_size', (serverState.fx?.schemas?.reverb?.[0]?.default) ?? 0.5);
+            const params = Object.fromEntries((serverState.fx?.schemas?.reverb || []).map(p => [p.name, p.default]));
+            sendCommand('fx_set_bus', { section_id: null, effect: { type: 'reverb', params, enabled: true } });
         }
 
         function renderFx() {
