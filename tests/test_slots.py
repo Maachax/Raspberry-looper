@@ -1,0 +1,76 @@
+import sys, os
+import numpy as np
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from audio import WebLooper, LoopLayer, LooperState, SAMPLE_RATE
+
+
+def _looper_with_layers(n):
+    """A looper with n one-second layers (ids 0..n-1), playing."""
+    looper = WebLooper()
+    looper.layers = [LoopLayer(i, f"L{i}", np.zeros(SAMPLE_RATE, dtype=np.float32))
+                     for i in range(n)]
+    looper.master_length = SAMPLE_RATE
+    looper.state = LooperState.PLAYING
+    return looper
+
+
+def test_add_slot_appends_empty_slot_with_unique_id():
+    looper = WebLooper()
+    s1 = looper.add_slot()
+    s2 = looper.add_slot()
+    assert s1['loop_ids'] == []
+    assert s1['id'] != s2['id']
+    assert looper.slots == [s1, s2]
+
+
+def test_set_slot_loops_keeps_only_existing_layer_ids():
+    looper = _looper_with_layers(3)          # valid ids: 0,1,2
+    slot = looper.add_slot()
+    looper.set_slot_loops(slot['id'], [0, 2, 99])
+    assert slot['loop_ids'] == [0, 2]        # 99 dropped
+
+
+def test_delete_slot_removes_it_and_clears_active():
+    looper = _looper_with_layers(2)
+    slot = looper.add_slot()
+    looper._apply_slot(slot)                 # marks it active
+    assert looper.active_slot_id == slot['id']
+    assert looper.delete_slot(slot['id']) is True
+    assert looper.slots == []
+    assert looper.active_slot_id is None
+
+
+def test_apply_slot_turns_on_only_member_loops():
+    looper = _looper_with_layers(3)
+    slot = looper.add_slot()
+    looper.set_slot_loops(slot['id'], [0, 2])
+    looper._apply_slot(slot)
+    assert [l.is_playing for l in looper.layers] == [True, False, True]
+    assert looper.active_slot_id == slot['id']
+
+
+def test_apply_empty_slot_mutes_everything():
+    looper = _looper_with_layers(2)
+    slot = looper.add_slot()
+    looper._apply_slot(slot)
+    assert [l.is_playing for l in looper.layers] == [False, False]
+
+
+def test_launch_slot_while_playing_is_quantized_not_immediate():
+    looper = _looper_with_layers(2)          # state=PLAYING, master_length>0
+    slot = looper.add_slot()
+    looper.set_slot_loops(slot['id'], [1])
+    looper.launch_slot(slot['id'], quantized=True)
+    assert looper.pending_slot is slot       # queued, not applied yet
+    assert looper.layers[0].is_playing is True   # unchanged until loop wrap
+
+
+def test_launch_slot_applies_immediately_when_not_playing():
+    looper = _looper_with_layers(2)
+    looper.state = LooperState.IDLE
+    slot = looper.add_slot()
+    looper.set_slot_loops(slot['id'], [1])
+    looper.launch_slot(slot['id'], quantized=True)
+    assert looper.pending_slot is None
+    assert [l.is_playing for l in looper.layers] == [False, True]

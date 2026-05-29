@@ -175,6 +175,12 @@ class WebLooper:
         self._next_scene_id = 1
         self.pending_scene = None  # Scene to apply at next loop restart
 
+        # Slots (launchable loop sets — replaces scenes)
+        self.slots = []            # list of {'id': int, 'loop_ids': [int, ...]}
+        self._next_slot_id = 1
+        self.pending_slot = None   # slot to apply at next loop restart
+        self.active_slot_id = None # id of the slot whose set is currently playing
+
         # Reactive scene collapse
         self.collapse_enabled = False
         self.collapse_scene_id = None   # int scene id to switch to on silence
@@ -538,6 +544,58 @@ class WebLooper:
             self.master_position = 0
             self.state = LooperState.IDLE
             print("✓ All loops cleared")
+            return True
+
+    # -------------------------------------------------------------------------
+    # SLOT LAUNCHER
+    # -------------------------------------------------------------------------
+
+    def add_slot(self) -> dict:
+        """Append a new empty slot and return it."""
+        with self.lock:
+            slot = {'id': self._next_slot_id, 'loop_ids': []}
+            self._next_slot_id += 1
+            self.slots.append(slot)
+            return slot
+
+    def delete_slot(self, slot_id: int) -> bool:
+        """Delete a slot. Clears pending/active references to it."""
+        with self.lock:
+            before = len(self.slots)
+            self.slots = [s for s in self.slots if s['id'] != slot_id]
+            if self.pending_slot and self.pending_slot['id'] == slot_id:
+                self.pending_slot = None
+            if self.active_slot_id == slot_id:
+                self.active_slot_id = None
+            return len(self.slots) < before
+
+    def set_slot_loops(self, slot_id: int, loop_ids: list) -> bool:
+        """Replace a slot's loop set, keeping only ids of layers that exist."""
+        with self.lock:
+            slot = next((s for s in self.slots if s['id'] == slot_id), None)
+            if slot is None:
+                return False
+            valid = {layer.id for layer in self.layers}
+            slot['loop_ids'] = [int(i) for i in loop_ids if int(i) in valid]
+            return True
+
+    def _apply_slot(self, slot: dict):
+        """Turn on only the slot's member loops. Must be called holding self.lock."""
+        ids = set(slot['loop_ids'])
+        for layer in self.layers:
+            layer.is_playing = layer.id in ids
+        self.active_slot_id = slot['id']
+
+    def launch_slot(self, slot_id: int, quantized: bool = True) -> bool:
+        """Launch a slot: queue for next loop restart if playing, else apply now."""
+        with self.lock:
+            slot = next((s for s in self.slots if s['id'] == slot_id), None)
+            if slot is None:
+                return False
+            if quantized and self.state == LooperState.PLAYING and self.master_length > 0:
+                self.pending_slot = slot
+            else:
+                self._apply_slot(slot)
             return True
 
     # -------------------------------------------------------------------------
