@@ -903,6 +903,17 @@
         // TRIM EDITOR
         // =================================================================
         
+        // Opened from the ✂ button on the master-loop row: reveal the trim editor.
+        function openTrimEditor() {
+            if (!document.body.classList.contains('edit-mode')) {
+                toggleViewMode();           // edit panels hold the trim editor
+            }
+            if (!trimEditorExpanded) {
+                toggleTrimEditor();         // expand + request waveform
+            }
+            document.getElementById('trimSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
         function toggleTrimEditor() {
             const section = document.getElementById('trimSection');
             trimEditorExpanded = !trimEditorExpanded;
@@ -1513,7 +1524,7 @@
             
             // --- Layers List ---
             const layersList = document.getElementById('layersList');
-            const _layersJson = JSON.stringify(serverState.layers);
+            const _layersJson = JSON.stringify(serverState.layers) + (serverState.trim?.can_trim ? '1' : '0');
             if (_layersJson !== _lastLayersJson) {
                 _lastLayersJson = _layersJson;
 
@@ -1522,11 +1533,15 @@
             } else {
                 layersList.innerHTML = serverState.layers.map(layer => {
                     const vol = Math.round((layer.volume ?? 1) * 100);
+                    const trimBtn = (layer.id === 0 && serverState.trim?.can_trim)
+                        ? `<button class="layer-trim-btn" title="Trim master loop" onclick="event.stopPropagation(); openTrimEditor()">✂</button>`
+                        : '';
                     return `
                         <div class="layer-row ${layer.is_playing ? '' : 'muted'}"
                              style="border-left-color: ${layer.color}"
                              onclick="document.body.classList.contains('edit-mode') && toggleLayer(${layer.id})">
                             <span class="layer-name" style="color: ${layer.color}">${layer.name}</span>
+                            ${trimBtn}
                             <div class="layer-vol-bar-bg">
                                 <div class="layer-vol-bar" style="width:${vol}%; background:${layer.color}"></div>
                             </div>

@@ -2015,3 +2015,17 @@ body.edit-mode .layer-expanded { display: flex; }
     border-radius: 5px; padding: 4px 7px;
 }
 .palette-chip .chip-dot { width: 9px; height: 9px; border-radius: 50%; }
+
+/* ── Master-loop trim (✂) button on the layer row ── */
+.layer-trim-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 5px;
+}
+.layer-trim-btn:hover { color: #7cf; background: rgba(124, 204, 255, 0.12); }
