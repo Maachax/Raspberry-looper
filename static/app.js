@@ -612,10 +612,12 @@
             // Disable REC button during countdown
             document.getElementById('btnRec').disabled = true;
             
-            // Update status badge
+            // Update status badge (optional — element may not exist in current layout)
             const badge = document.getElementById('statusBadge');
-            badge.textContent = 'Get ready...';
-            badge.className = 'status-badge status-countdown';
+            if (badge) {
+                badge.textContent = 'Get ready...';
+                badge.className = 'status-badge status-countdown';
+            }
             
             // Show BPM
             bpmEl.textContent = `${localBpm} BPM`;
