@@ -74,3 +74,29 @@ def test_launch_slot_applies_immediately_when_not_playing():
     looper.launch_slot(slot['id'], quantized=True)
     assert looper.pending_slot is None
     assert [l.is_playing for l in looper.layers] == [False, True]
+
+
+def test_delete_layer_remaps_slot_loop_ids():
+    looper = _looper_with_layers(3)          # ids 0,1,2
+    slot = looper.add_slot()
+    looper.set_slot_loops(slot['id'], [0, 2])
+    looper.delete_layer(1)                   # id 2 becomes id 1 after renumber
+    assert slot['loop_ids'] == [0, 1]
+
+def test_delete_layer_drops_its_own_id_from_slots():
+    looper = _looper_with_layers(3)
+    slot = looper.add_slot()
+    looper.set_slot_loops(slot['id'], [1, 2])
+    looper.delete_layer(1)                   # remove id 1; id 2 -> id 1
+    assert slot['loop_ids'] == [1]
+
+def test_clear_all_empties_slots_and_resets():
+    looper = _looper_with_layers(2)
+    looper.add_slot()
+    looper.active_slot_id = 1
+    looper.pending_slot = looper.slots[0]
+    looper.clear_all()
+    assert looper.slots == []
+    assert looper.active_slot_id is None
+    assert looper.pending_slot is None
+    assert looper._next_slot_id == 1

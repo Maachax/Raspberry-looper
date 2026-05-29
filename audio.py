@@ -317,6 +317,11 @@ class WebLooper:
                             self._apply_scene(self.pending_scene)
                             self.pending_scene = None
 
+                        # Apply pending slot at loop restart (PLAYING state only)
+                        if loop_restarted and self.pending_slot is not None and self.state == LooperState.PLAYING:
+                            self._apply_slot(self.pending_slot)
+                            self.pending_slot = None
+
                         # Handle OVERDUB_ARMED → RECORDING_OVERDUB transition
                         if self.state == LooperState.OVERDUB_ARMED and loop_restarted:
                             self.state = LooperState.RECORDING_OVERDUB
@@ -516,7 +521,12 @@ class WebLooper:
             # Renumber remaining layers
             for i, layer in enumerate(self.layers):
                 layer.id = i
-            
+
+            # Remap slots: drop the deleted id; shift higher ids down by one
+            for slot in self.slots:
+                slot['loop_ids'] = [i - 1 if i > layer_id else i
+                                    for i in slot['loop_ids'] if i != layer_id]
+
             print(f"✓ Deleted {name}")
             return True
 
@@ -543,6 +553,10 @@ class WebLooper:
             self.master_length = 0
             self.master_position = 0
             self.state = LooperState.IDLE
+            self.slots = []
+            self._next_slot_id = 1
+            self.pending_slot = None
+            self.active_slot_id = None
             print("✓ All loops cleared")
             return True
 
