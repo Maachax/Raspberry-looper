@@ -80,7 +80,8 @@
                     onclick="setSidePanel('meters')" title="Input / Boost">dB</button>
             <button class="side-icon" id="sideBtnSections" data-panel="sections"
                     onclick="setSidePanel('sections')" title="Sections / Launcher">▦</button>
-            <button class="side-icon side-icon-stub" title="Art (coming soon)">✦</button>
+            <button class="side-icon" id="sideBtnFx" data-panel="fx"
+                    onclick="setSidePanel('fx')" title="Effects">≈</button>
         </div>
 
         <!-- Panel content (hidden when no panel active) -->
@@ -169,6 +170,29 @@
                 <button class="add-section-btn" id="addSectionBtn" onclick="addSection()">＋ add section</button>
                 <div class="section-palette-label">LOOPS — drag into a section</div>
                 <div class="section-palette" id="sectionPalette"></div>
+            </div>
+
+            <!-- FX panel -->
+            <div class="side-panel" id="panelFx">
+                <div class="panel-header accent-primary"><span>FX</span></div>
+                <div class="fx-pick">
+                    <label class="fx-pick-label">LOOP</label>
+                    <select id="fxLoopSelect" class="fx-select" onchange="fxOnLoopChange()"></select>
+                </div>
+                <div class="fx-pick">
+                    <label class="fx-pick-label">SCOPE</label>
+                    <div class="fx-scope" id="fxScope"></div>
+                </div>
+                <div class="fx-override-banner" id="fxOverrideBanner" style="display:none">
+                    <span>⤷ Overrides the loop default here</span>
+                    <button class="fx-revert" onclick="fxRevertOverride()">↺ revert</button>
+                </div>
+                <div class="fx-chain" id="fxChain"></div>
+                <div class="fx-params" id="fxParams"></div>
+                <div class="fx-bus">
+                    <div class="fx-bus-head">BUS — reverb (all loops)</div>
+                    <div id="fxBus"></div>
+                </div>
             </div>
 
         </div>

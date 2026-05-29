@@ -2029,3 +2029,25 @@ body.edit-mode .layer-expanded { display: flex; }
     border-radius: 5px;
 }
 .layer-trim-btn:hover { color: #7cf; background: rgba(124, 204, 255, 0.12); }
+
+/* ── FX panel ── */
+.fx-pick { display:flex; align-items:center; gap:8px; padding:7px 10px; border-bottom:1px solid var(--border); }
+.fx-pick-label { font-size:9px; letter-spacing:.5px; color:var(--text-muted); width:42px; }
+.fx-select { flex:1; background:var(--surface); border:1px solid var(--border); color:var(--text); font-size:11px; padding:4px 6px; border-radius:5px; }
+.fx-scope { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+.fx-scope button { flex:1; background:var(--surface); border:none; color:var(--text-muted); font-size:11px; padding:5px 8px; cursor:pointer; }
+.fx-scope button.on { background:#7cf; color:#111; }
+.fx-override-banner { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:7px 10px; padding:5px 8px; font-size:10px; color:#cbb6f0; background:#2a2433; border:1px solid #5a4a7a; border-radius:6px; }
+.fx-revert { background:none; border:none; color:#cbb6f0; cursor:pointer; font-size:10px; }
+.fx-chain { display:flex; flex-wrap:wrap; gap:6px; padding:9px 10px; border-bottom:1px solid var(--border); align-items:center; }
+.fx-chip { display:inline-flex; align-items:center; gap:6px; background:#2a2433; border:1px solid #5a4a7a; border-radius:6px; padding:5px 8px; color:#cbb6f0; font-size:11px; cursor:grab; }
+.fx-chip.active { background:#5a4a7a; color:#fff; }
+.fx-chip .fx-x { cursor:pointer; }
+.fx-add { border:1px dashed var(--border); border-radius:6px; padding:5px 8px; color:#7cf; font-size:11px; background:none; cursor:pointer; }
+.fx-params { padding:9px 10px; }
+.fx-knob { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+.fx-knob label { width:64px; font-size:10px; color:var(--text-muted); }
+.fx-knob input[type=range] { flex:1; }
+.fx-knob .fx-val { width:48px; text-align:right; font-size:10px; color:var(--text); }
+.fx-bus { padding:9px 10px; border-top:1px solid var(--border); }
+.fx-bus-head { font-size:9px; letter-spacing:.5px; color:var(--text-muted); margin-bottom:6px; }

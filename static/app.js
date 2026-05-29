@@ -800,6 +800,127 @@
         }
 
         // =================================================================
+        // FX
+        // =================================================================
+        let fxLoopId = 0;        // which loop's chain we're editing
+        let fxScopeSection = false;  // false = loop default, true = active section override
+        let fxActiveIdx = 0;     // selected effect index in the chain
+
+        function fxActiveSection() {
+            const sid = serverState.sections?.active_id;
+            return (serverState.sections?.list || []).find(s => s.id === sid) || null;
+        }
+        function fxCurrentChain() {
+            const layer = (serverState.layers || []).find(l => l.id === fxLoopId);
+            const base = (layer && layer.fx_chain) ? layer.fx_chain : [];
+            if (fxScopeSection) {
+                const sec = fxActiveSection();
+                const ov = sec && sec.fx_overrides ? sec.fx_overrides[fxLoopId] : undefined;
+                return ov !== undefined && ov !== null ? ov : base;
+            }
+            return base;
+        }
+        function fxCommitChain(chain) {
+            if (fxScopeSection) {
+                const sec = fxActiveSection();
+                if (sec) sendCommand('fx_set_section_override', { section_id: sec.id, layer_id: fxLoopId, chain });
+            } else {
+                sendCommand('fx_set_loop_chain', { layer_id: fxLoopId, chain });
+            }
+        }
+        function fxOnLoopChange() { fxLoopId = parseInt(document.getElementById('fxLoopSelect').value, 10) || 0; fxActiveIdx = 0; renderFx(); }
+        function fxSetScope(isSection) { fxScopeSection = isSection; fxActiveIdx = 0; renderFx(); }
+        function fxRevertOverride() {
+            const sec = fxActiveSection();
+            if (sec) sendCommand('fx_clear_section_override', { section_id: sec.id, layer_id: fxLoopId });
+        }
+        function fxAddEffect() {
+            const type = prompt('Add effect: reverb, delay, chorus, distortion, filter');
+            if (!type || !serverState.fx?.schemas[type]) return;
+            const params = {}; serverState.fx.schemas[type].forEach(p => params[p.name] = p.default);
+            fxCommitChain([...fxCurrentChain(), { type, params, enabled: true }]);
+        }
+        function fxRemoveEffect(idx) { const c = fxCurrentChain().slice(); c.splice(idx, 1); fxActiveIdx = 0; fxCommitChain(c); }
+        function fxMoveEffect(idx, dir) {
+            const c = fxCurrentChain().slice(); const j = idx + dir;
+            if (j < 0 || j >= c.length) return;
+            [c[idx], c[j]] = [c[j], c[idx]]; fxActiveIdx = j; fxCommitChain(c);
+        }
+        function fxSetParam(idx, name, value) {
+            const c = fxCurrentChain().map(e => ({ ...e, params: { ...e.params } }));
+            c[idx].params[name] = value; fxCommitChain(c);
+        }
+        function fxSetBusParam(name, value) {
+            const cur = serverState.fx?.master_bus
+                || { type: 'reverb', params: Object.fromEntries((serverState.fx?.schemas?.reverb || []).map(p => [p.name, p.default])), enabled: true };
+            const effect = { ...cur, params: { ...cur.params, [name]: value } };
+            sendCommand('fx_set_bus', { section_id: null, effect });
+        }
+        function fxToggleBus(on) {
+            if (!on) { sendCommand('fx_set_bus', { section_id: null, effect: null }); return; }
+            fxSetBusParam('room_size', (serverState.fx?.schemas?.reverb?.[0]?.default) ?? 0.5);
+        }
+
+        function renderFx() {
+            const panel = document.getElementById('panelFx');
+            if (!panel || !panel.classList.contains('active')) return;
+            const layers = serverState.layers || [];
+            if (!layers.some(l => l.id === fxLoopId)) fxLoopId = layers.length ? layers[0].id : 0;
+
+            document.getElementById('fxLoopSelect').innerHTML = layers.map(l =>
+                `<option value="${l.id}" ${l.id === fxLoopId ? 'selected' : ''}>${l.name}</option>`).join('');
+
+            const sec = fxActiveSection();
+            document.getElementById('fxScope').innerHTML =
+                `<button class="${!fxScopeSection ? 'on' : ''}" onclick="fxSetScope(false)">Default</button>
+                 <button class="${fxScopeSection ? 'on' : ''}" onclick="fxSetScope(true)" ${sec ? '' : 'disabled'}>Section${sec ? ': ' + (sec.name || sec.id) : ''}</button>`;
+
+            const isOverriding = fxScopeSection && sec && sec.fx_overrides && sec.fx_overrides[fxLoopId] != null;
+            document.getElementById('fxOverrideBanner').style.display = isOverriding ? 'flex' : 'none';
+
+            const chain = fxCurrentChain();
+            if (fxActiveIdx >= chain.length) fxActiveIdx = Math.max(0, chain.length - 1);
+            document.getElementById('fxChain').innerHTML = chain.map((e, i) => `
+                <span class="fx-chip ${i === fxActiveIdx ? 'active' : ''}" onclick="fxActiveIdx=${i};renderFx()">
+                    <span onclick="event.stopPropagation();fxMoveEffect(${i},-1)">‹</span>${e.type}
+                    <span onclick="event.stopPropagation();fxMoveEffect(${i},1)">›</span>
+                    <span class="fx-x" onclick="event.stopPropagation();fxRemoveEffect(${i})">✕</span>
+                </span>`).join('') + `<button class="fx-add" onclick="fxAddEffect()">＋ add</button>`;
+
+            const schemas = serverState.fx?.schemas || {};
+            const sel = chain[fxActiveIdx];
+            document.getElementById('fxParams').innerHTML = (sel && schemas[sel.type]) ? schemas[sel.type].map(p => {
+                const v = sel.params[p.name];
+                if (p.options) {
+                    return `<div class="fx-knob"><label>${p.name}</label>
+                        <select onchange="fxSetParam(${fxActiveIdx},'${p.name}',this.value)">
+                          ${p.options.map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}
+                        </select></div>`;
+                }
+                return `<div class="fx-knob"><label>${p.name}</label>
+                    <input type="range" min="${p.min}" max="${p.max}" step="${(p.max - p.min) / 100}" value="${v}"
+                           oninput="this.nextElementSibling.textContent=(+this.value).toFixed(2)"
+                           onchange="fxSetParam(${fxActiveIdx},'${p.name}',parseFloat(this.value))">
+                    <span class="fx-val">${(+v).toFixed(2)}</span></div>`;
+            }).join('') : '<div style="font-size:10px;color:var(--text-muted)">No effect selected</div>';
+
+            const bus = serverState.fx?.master_bus;
+            const busOn = !!bus;
+            const rp = (schemas.reverb || []);
+            document.getElementById('fxBus').innerHTML =
+                `<div class="fx-knob"><label>enabled</label>
+                   <input type="checkbox" ${busOn ? 'checked' : ''} onchange="fxToggleBus(this.checked)"></div>` +
+                (busOn ? rp.map(p => {
+                    const v = bus.params[p.name];
+                    return `<div class="fx-knob"><label>${p.name}</label>
+                        <input type="range" min="${p.min}" max="${p.max}" step="${(p.max - p.min) / 100}" value="${v}"
+                               oninput="this.nextElementSibling.textContent=(+this.value).toFixed(2)"
+                               onchange="fxSetBusParam('${p.name}',parseFloat(this.value))">
+                        <span class="fx-val">${(+v).toFixed(2)}</span></div>`;
+                }).join('') : '');
+        }
+
+        // =================================================================
         // SESSIONS
         // =================================================================
 
@@ -1594,6 +1715,9 @@
             // --- Sections ---
             renderSections();
 
+            // --- FX ---
+            renderFx();
+
             // --- Stats ---
             if (serverState.stats) {
                 const callbackMs = serverState.stats.callback_time_ms;
@@ -1703,6 +1827,7 @@
 
             if (name === 'scale') renderFretboard();
             if (name === 'sections') renderSections();
+            if (name === 'fx') renderFx();
         }
 
         // =================================================================
