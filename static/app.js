@@ -230,8 +230,30 @@
             if (el) el.classList.remove('visible');
         }
 
+        function renderScaleInfo() {
+            const info = SCALE_INFO[scaleType] || { characteristic: [], title: '', text: '' };
+            const charSet = new Set(info.characteristic || []);
+            const intervals = SCALE_INTERVALS[scaleType] || [];
+
+            const formulaEl = document.getElementById('intervalFormula');
+            if (formulaEl) {
+                formulaEl.innerHTML = intervals.map(iv => {
+                    const cls = iv === 0 ? 'pill pill-root'
+                              : charSet.has(iv) ? 'pill pill-char'
+                              : 'pill';
+                    return `<span class="${cls}">${INTERVAL_LABELS[iv]}</span>`;
+                }).join('');
+            }
+
+            const titleEl = document.getElementById('scaleExplainTitle');
+            const textEl = document.getElementById('scaleExplainText');
+            if (titleEl) titleEl.textContent = info.title || '';
+            if (textEl) textEl.textContent = info.text || '';
+        }
+
         function renderFretboard() {
             if (activeSidePanel !== 'scale') return;
+            renderScaleInfo();
             const rootIdx = SCALE_NOTES.indexOf(scaleRoot);
             const intervals = new Set(SCALE_INTERVALS[scaleType] || []);
 
