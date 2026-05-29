@@ -645,6 +645,7 @@ class WebLooper:
                         'color': l.color,
                         'volume': l.volume,
                         'is_playing': l.is_playing,
+                        'fx_chain': l.fx_chain,
                     }
                     for l in self.layers
                 ],
@@ -733,6 +734,8 @@ class WebLooper:
                 layer.color = layer_meta.get('color', LAYER_COLORS[lid % len(LAYER_COLORS)])
                 layer.volume = layer_meta.get('volume', 1.0)
                 layer.is_playing = layer_meta.get('is_playing', True)
+                layer.fx_chain = layer_meta.get('fx_chain', []) or []
+                self._rebake_layer(layer, layer.fx_chain)
                 self.layers.append(layer)
 
             self.master_length = meta.get('master_length', len(buffers[0]))
@@ -1525,6 +1528,10 @@ class WebLooper:
                 'list': sections_data,
                 'pending_id': pending_section_id,
                 'active_id': active_section_id,
+            },
+            'fx': {
+                'schemas': __import__('effects').EFFECT_SCHEMAS,
+                'master_bus': self.master_bus,
             },
             'scale': {
                 'root': scale_root,

@@ -47,3 +47,28 @@ def test_wet_cache_reused_for_identical_chain():
     first = looper.layers[0].buffer
     looper.set_loop_chain(0, [effects.default_effect('reverb')])  # identical content
     assert looper.layers[0].buffer is first   # served from cache, same object
+
+
+def test_get_state_exposes_chain_and_schemas():
+    looper = WebLooper()
+    looper.layers = [LoopLayer(0, "Master", _tone(440))]
+    looper.master_length = looper.layers[0].length
+    looper.set_loop_chain(0, [effects.default_effect('delay')])
+    st = looper.get_state()
+    assert st['layers'][0]['fx_chain'][0]['type'] == 'delay'
+    assert set(st['fx']['schemas']) == set(effects.EFFECT_SCHEMAS)
+
+
+def test_session_roundtrip_preserves_chain(tmp_path, monkeypatch):
+    import audio
+    monkeypatch.setattr(audio, 'SESSIONS_DIR', tmp_path)
+    looper = WebLooper()
+    looper.layers = [LoopLayer(0, "Master", _tone(440))]
+    looper.master_length = looper.layers[0].length
+    looper.state = LooperState.PLAYING
+    looper.set_loop_chain(0, [effects.default_effect('chorus')])
+    res = looper.save_session("fxtest")
+    assert res['success']
+    looper2 = WebLooper()
+    assert looper2.load_session(res['session_id'])['success']
+    assert looper2.layers[0].fx_chain[0]['type'] == 'chorus'
