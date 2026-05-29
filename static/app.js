@@ -342,7 +342,6 @@
 
         // Render cache — skip innerHTML when data hasn't changed
         let _lastLayersJson = '';
-        let _lastScenesJson = '';
         
         // =================================================================
         // WEB AUDIO - METRONOME
@@ -794,90 +793,6 @@
         }
 
         // =================================================================
-        // SCENES
-        // =================================================================
-
-        function saveScene() {
-            const input = document.getElementById('sceneNameInput');
-            const name = input.value.trim();
-            sendCommand('save_scene', { name });
-            input.value = '';
-        }
-
-        function loadScene(sceneId) {
-            const isPlaying = serverState.state === 'playing';
-            sendCommand('load_scene', { scene_id: sceneId, quantized: isPlaying });
-        }
-
-        function deleteScene(sceneId) {
-            if (confirm('Delete this scene?')) {
-                sendCommand('delete_scene', { scene_id: sceneId });
-            }
-        }
-
-        function renderScenes() {
-            const _scenesJson = JSON.stringify(serverState.scenes) + (serverState.collapse?.scene_id ?? '');
-            if (_scenesJson === _lastScenesJson) return;
-            _lastScenesJson = _scenesJson;
-
-            const scenesList = document.getElementById('scenesList');
-            if (!serverState.scenes || serverState.scenes.list.length === 0) {
-                scenesList.innerHTML = '<div class="scenes-empty">No scenes saved yet</div>';
-                updateCollapseControls();
-                return;
-            }
-
-            const pendingId = serverState.scenes.pending_id;
-            const collapseId = serverState.collapse?.scene_id ?? null;
-            scenesList.innerHTML = serverState.scenes.list.map(scene => {
-                const isPending = scene.id === pendingId;
-                const isCollapse = scene.id === collapseId;
-                const layerCount = scene.layer_states.length;
-                const activeCount = scene.layer_states.filter(l => l.is_playing).length;
-                return `
-                    <div class="scene-item ${isPending ? 'pending' : ''} ${isCollapse ? 'collapse-scene' : ''}">
-                        <div class="scene-name-display">${scene.name}</div>
-                        <span class="scene-layer-count">${activeCount}/${layerCount}</span>
-                        ${isPending ? '<span class="scene-pending-badge">queued</span>' : ''}
-                        ${isCollapse ? '<span class="scene-pending-badge" style="background:#2d4a3e;color:#38a169">idle</span>' : ''}
-                        <button class="btn btn-idle-scene" title="${isCollapse ? 'Clear idle scene' : 'Set as idle scene'}"
-                                onclick="setCollapseScene(${isCollapse ? 'null' : scene.id})">
-                            ${isCollapse ? '★' : '☆'}
-                        </button>
-                        <button class="btn btn-load-scene" onclick="loadScene(${scene.id})">LOAD</button>
-                        <button class="btn btn-delete-scene" onclick="deleteScene(${scene.id})">✕</button>
-                    </div>
-                `;
-            }).join('');
-            updateCollapseControls();
-        }
-
-        function updateCollapseControls() {
-            const collapse = serverState.collapse || {};
-            const toggle = document.getElementById('collapseToggle');
-            const timeoutEl = document.getElementById('collapseTimeout');
-            if (toggle) toggle.checked = collapse.enabled || false;
-            if (timeoutEl) timeoutEl.value = collapse.timeout || 4;
-            const hasScene = collapse.scene_id !== null && collapse.scene_id !== undefined;
-            const hint = document.getElementById('collapseHint');
-            if (hint) hint.textContent = hasScene ? '' : 'Star a scene above to enable';
-        }
-
-        function setCollapseScene(sceneId) {
-            sendCommand('set_collapse_scene', { scene_id: sceneId });
-        }
-
-        function setCollapseEnabled(enabled) {
-            const timeout = parseFloat(document.getElementById('collapseTimeout').value) || 4;
-            sendCommand('set_collapse_enabled', { enabled, timeout });
-        }
-
-        function setCollapseTimeout(timeout) {
-            const enabled = document.getElementById('collapseToggle').checked;
-            sendCommand('set_collapse_enabled', { enabled, timeout: parseFloat(timeout) });
-        }
-
-        // =================================================================
         // SESSIONS
         // =================================================================
 
@@ -913,7 +828,7 @@
             el.innerHTML = sessionsList.map(s => {
                 const date = s.created_at ? new Date(s.created_at).toLocaleDateString() : '';
                 const bpm = s.bpm ? `${Math.round(s.bpm)} BPM · ` : '';
-                const meta = `${bpm}${s.layer_count} loop${s.layer_count !== 1 ? 's' : ''}${s.scene_count ? ` · ${s.scene_count} scenes` : ''} · ${date}`;
+                const meta = `${bpm}${s.layer_count} loop${s.layer_count !== 1 ? 's' : ''}${s.slot_count ? ` · ${s.slot_count} slots` : ''} · ${date}`;
                 return `
                     <div class="session-item">
                         <div class="session-info">
@@ -1653,9 +1568,6 @@
                 const clipEl = document.getElementById('clipIndicator');
                 clipEl.textContent = peak > 0.95 ? 'CLIP' : '';
             }
-
-            // --- Scenes ---
-            renderScenes();
 
             // --- Slots ---
             renderSlots();

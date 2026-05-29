@@ -170,24 +170,11 @@ class WebLooper:
         self.input_peak = 0.0        # Peak hold (0–1)
         self._peak_hold_frames = 0   # Callback frames since last peak reset
 
-        # Scenes
-        self.scenes = {}           # {scene_id: scene_dict}
-        self._next_scene_id = 1
-        self.pending_scene = None  # Scene to apply at next loop restart
-
-        # Slots (launchable loop sets — replaces scenes)
+        # Slots (launchable loop sets)
         self.slots = []            # list of {'id': int, 'loop_ids': [int, ...]}
         self._next_slot_id = 1
         self.pending_slot = None   # slot to apply at next loop restart
         self.active_slot_id = None # id of the slot whose set is currently playing
-
-        # Reactive scene collapse
-        self.collapse_enabled = False
-        self.collapse_scene_id = None   # int scene id to switch to on silence
-        self.collapse_timeout = 4.0     # seconds of silence before collapsing
-        self.collapse_threshold = 0.01  # RMS threshold (≈ -40dB)
-        self._silence_frames = 0        # consecutive silent callback frames
-        self._collapse_triggered = False  # True after collapse, reset when playing again
 
         # Scale visualizer
         self.scale_root = 'A'
@@ -243,23 +230,6 @@ class WebLooper:
                         self.input_peak = max(self.input_peak * 0.994, rms)
 
                 # -------------------------------------------------------------
-                # REACTIVE SCENE COLLAPSE
-                # -------------------------------------------------------------
-                if (self.collapse_enabled
-                        and self.collapse_scene_id is not None
-                        and self.collapse_scene_id in self.scenes
-                        and self.state == LooperState.PLAYING):
-                    if rms < self.collapse_threshold:
-                        self._silence_frames += frames
-                        silence_secs = self._silence_frames / SAMPLE_RATE
-                        if silence_secs >= self.collapse_timeout and not self._collapse_triggered:
-                            self.pending_scene = self.scenes[self.collapse_scene_id]
-                            self._collapse_triggered = True
-                    else:
-                        self._silence_frames = 0
-                        self._collapse_triggered = False
-
-                # -------------------------------------------------------------
                 # STATE: RECORDING_MASTER
                 # -------------------------------------------------------------
                 if self.state == LooperState.RECORDING_MASTER:
@@ -311,11 +281,6 @@ class WebLooper:
                         old_position = self.master_position
                         self.master_position = (self.master_position + frames) % self.master_length
                         loop_restarted = self.master_position < old_position
-
-                        # Apply pending scene at loop restart (PLAYING state only)
-                        if loop_restarted and self.pending_scene is not None and self.state == LooperState.PLAYING:
-                            self._apply_scene(self.pending_scene)
-                            self.pending_scene = None
 
                         # Apply pending slot at loop restart (PLAYING state only)
                         if loop_restarted and self.pending_slot is not None and self.state == LooperState.PLAYING:
@@ -613,100 +578,6 @@ class WebLooper:
             return True
 
     # -------------------------------------------------------------------------
-    # SCENE MANAGEMENT
-    # -------------------------------------------------------------------------
-
-    def save_scene(self, name: str) -> dict:
-        """Save current layer state as a named scene."""
-        with self.lock:
-            if not self.layers:
-                return {'success': False, 'error': 'No layers to save'}
-
-            scene_id = self._next_scene_id
-            self._next_scene_id += 1
-
-            layer_states = [
-                {'id': layer.id, 'is_playing': layer.is_playing, 'volume': layer.volume}
-                for layer in self.layers
-            ]
-
-            scene = {
-                'id': scene_id,
-                'name': name.strip() or f'Scene {scene_id}',
-                'layer_states': layer_states,
-            }
-            self.scenes[scene_id] = scene
-            print(f"✓ Scene saved: '{scene['name']}' ({len(layer_states)} layers)")
-            return {'success': True, 'scene': scene}
-
-    def _apply_scene(self, scene: dict):
-        """Apply a scene's layer states. Must be called within lock."""
-        layer_map = {layer.id: layer for layer in self.layers}
-        for state in scene['layer_states']:
-            layer = layer_map.get(state['id'])
-            if layer:
-                layer.is_playing = state['is_playing']
-                layer.volume = state['volume']
-        print(f"✓ Scene applied: '{scene['name']}'")
-
-    def load_scene(self, scene_id: int, quantized: bool = True) -> bool:
-        """Load a scene. If quantized=True and playing, waits for next loop restart."""
-        with self.lock:
-            scene = self.scenes.get(scene_id)
-            if not scene:
-                return False
-
-            if quantized and self.state == LooperState.PLAYING and self.master_length > 0:
-                self.pending_scene = scene
-                print(f"✓ Scene '{scene['name']}' scheduled for next loop restart")
-            else:
-                self._apply_scene(scene)
-            return True
-
-    def delete_scene(self, scene_id: int) -> bool:
-        """Delete a scene."""
-        with self.lock:
-            if scene_id not in self.scenes:
-                return False
-            name = self.scenes[scene_id]['name']
-            del self.scenes[scene_id]
-            if self.pending_scene and self.pending_scene['id'] == scene_id:
-                self.pending_scene = None
-            print(f"✓ Scene deleted: '{name}'")
-            return True
-
-    def rename_scene(self, scene_id: int, name: str) -> bool:
-        """Rename a scene."""
-        with self.lock:
-            if scene_id not in self.scenes:
-                return False
-            self.scenes[scene_id]['name'] = name.strip() or self.scenes[scene_id]['name']
-            return True
-
-    def set_collapse_scene(self, scene_id) -> bool:
-        """Designate a scene as the idle/collapse target. Pass None to clear."""
-        with self.lock:
-            if scene_id is not None and scene_id not in self.scenes:
-                return False
-            self.collapse_scene_id = scene_id
-            self._silence_frames = 0
-            self._collapse_triggered = False
-            status = f"scene {scene_id}" if scene_id else "cleared"
-            print(f"✓ Collapse scene {status}")
-            return True
-
-    def set_collapse_enabled(self, enabled: bool, timeout: float = None) -> bool:
-        """Enable/disable reactive scene collapse, optionally update timeout."""
-        with self.lock:
-            self.collapse_enabled = enabled
-            if timeout is not None:
-                self.collapse_timeout = max(1.0, float(timeout))
-            self._silence_frames = 0
-            self._collapse_triggered = False
-            print(f"✓ Collapse {'enabled' if enabled else 'disabled'} (timeout: {self.collapse_timeout}s)")
-            return True
-
-    # -------------------------------------------------------------------------
     # SESSION PERSISTENCE
     # -------------------------------------------------------------------------
 
@@ -870,7 +741,7 @@ class WebLooper:
                     'created_at': meta.get('created_at', ''),
                     'bpm': meta.get('bpm', 0),
                     'layer_count': len(meta.get('layers', [])),
-                    'scene_count': len(meta.get('scenes', {})),
+                    'slot_count': len(meta.get('slots', [])),
                 })
             except Exception:
                 continue
@@ -1536,11 +1407,6 @@ class WebLooper:
             num_layers = len(self.layers)
             input_level = self.input_level
             input_peak = self.input_peak
-            scenes_data = list(self.scenes.values())
-            pending_scene_id = self.pending_scene['id'] if self.pending_scene else None
-            collapse_enabled = self.collapse_enabled
-            collapse_scene_id = self.collapse_scene_id
-            collapse_timeout = self.collapse_timeout
             scale_root = self.scale_root
             scale_type = self.scale_type
             slots_data = [{'id': s['id'], 'loop_ids': list(s['loop_ids'])} for s in self.slots]
@@ -1615,15 +1481,6 @@ class WebLooper:
             },
             'input_level': input_level,
             'input_peak': input_peak,
-            'scenes': {
-                'list': scenes_data,
-                'pending_id': pending_scene_id,
-            },
-            'collapse': {
-                'enabled': collapse_enabled,
-                'scene_id': collapse_scene_id,
-                'timeout': collapse_timeout,
-            },
             'slots': {
                 'list': slots_data,
                 'pending_id': pending_slot_id,
