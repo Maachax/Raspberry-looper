@@ -1602,7 +1602,7 @@ body.edit-mode .layer-expanded { display: flex; }
     overflow: hidden;
 }
 
-.side-panel.active { display: flex; }
+.side-panel.active { display: flex; overflow-y: auto; }
 
 /* ── SCALE panel ── */
 .scale-current-row {
@@ -1974,4 +1974,3 @@ body.edit-mode .layer-expanded { display: flex; }
     margin-bottom: 3px;
 }
 .scale-explain-text { color: #c4cfde; font-size: 13px; line-height: 1.5; }
-.side-panel.active { overflow-y: auto; }

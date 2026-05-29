@@ -262,13 +262,13 @@
             const STRINGS = OPEN_STRINGS.length;
 
             const W = 640;
-            const padL = 34, padR = 12, padT = 18, padB = 22;
+            const padL = 42, padR = 12, padT = 18, padB = 22;
             const FRETS = 12;
             const STRING_SPACING = 23; // px between strings (room for 2-line labels)
             const H = padT + padB + STRING_SPACING * (STRINGS - 1);
             const fretW = (W - padL - padR) / FRETS;
             const DOT_R = 10;
-            const openX = padL - fretW * 0.55;
+            const openX = padL - fretW * 0.45; // leaves room for the gold ring on open-string notes
 
             const fretX = f => padL + f * fretW;
             const noteX = f => f === 0 ? openX : padL + (f - 0.5) * fretW;
