@@ -283,6 +283,10 @@ class WebLooper:
                                         loop_output[i] += sample
                         
                         # Apply master volume to loop output and add to pass-through
+                        if self.bus_reverb is not None:
+                            loop_output = np.asarray(
+                                self.bus_reverb(loop_output, SAMPLE_RATE, reset=False),
+                                dtype=np.float32)
                         output += loop_output * self.master_volume
                         
                         # Check for loop restart (position wrapping)
@@ -395,6 +399,30 @@ class WebLooper:
             layer = self.layers[layer_id]
             layer.fx_chain = chain
             self._rebake_layer(layer, chain)
+            return True
+
+    def _refresh_bus_reverb(self, effect):
+        """(Re)build the live bus reverb pedalboard from an effect dict (or clear it)."""
+        import effects as fx
+        if effect and effect.get('enabled', True) and effect.get('type') == 'reverb':
+            self.bus_reverb = fx.make_bus_reverb(effect['params'])
+        else:
+            self.bus_reverb = None
+
+    def set_bus(self, section_id, effect) -> bool:
+        """Set the master bus (section_id None) or a section's bus override; rebuild live reverb."""
+        with self.lock:
+            if section_id is None:
+                self.master_bus = effect
+            else:
+                section = next((s for s in self.sections if s['id'] == section_id), None)
+                if section is None:
+                    return False
+                section['bus'] = effect
+            active = next((s for s in self.sections if s['id'] == self.active_section_id), None)
+            effective = (active.get('bus') if active and active.get('bus') is not None
+                         else self.master_bus)
+            self._refresh_bus_reverb(effective)
             return True
 
     # -------------------------------------------------------------------------
@@ -559,6 +587,9 @@ class WebLooper:
             self._next_section_id = 1
             self.pending_section = None
             self.active_section_id = None
+            self.master_bus = None
+            self.bus_reverb = None
+            self.wet_cache = {}
             print("✓ All loops cleared")
             return True
 
@@ -631,6 +662,8 @@ class WebLooper:
             chain = effects.resolve_chain(layer.fx_chain, overrides.get(layer.id))
             self._rebake_layer(layer, chain)
         self.active_section_id = section['id']
+        effective_bus = section.get('bus') if section.get('bus') is not None else self.master_bus
+        self._refresh_bus_reverb(effective_bus)
 
     def launch_section(self, section_id: int, quantized: bool = True) -> bool:
         """Launch a section: queue for next loop restart if playing, else apply now."""

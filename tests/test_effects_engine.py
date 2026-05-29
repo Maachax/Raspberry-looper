@@ -101,3 +101,16 @@ def test_clear_section_override_reverts_to_default():
     assert sec['fx_overrides'].get(1) is not None
     looper.clear_section_override(sec['id'], 1)
     assert 1 not in sec['fx_overrides']
+
+
+def test_set_bus_builds_live_reverb_and_clear_removes_it():
+    looper = WebLooper()
+    looper.set_bus(None, effects.default_effect('reverb'))   # None section = master bus
+    assert looper.master_bus is not None
+    assert looper.bus_reverb is not None
+    block = _tone(440, 0.01)
+    out = looper.bus_reverb(block, SAMPLE_RATE, reset=False)
+    assert out.shape == block.shape
+    looper.set_bus(None, None)
+    assert looper.master_bus is None
+    assert looper.bus_reverb is None
