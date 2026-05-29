@@ -759,18 +759,33 @@ class WebLooper:
 
     @staticmethod
     def _slots_from_meta(meta: dict) -> tuple:
-        """Return (slots, next_slot_id) from session meta. Migrates old 'scenes'."""
-        if 'slots' in meta:
-            slots = [{'id': int(s['id']), 'loop_ids': [int(i) for i in s['loop_ids']]}
-                     for s in meta['slots']]
-            next_id = meta.get('next_slot_id',
-                               max([s['id'] for s in slots], default=0) + 1)
+        """Return (slots, next_slot_id) from session meta. Migrates old 'scenes'.
+
+        Tolerant of malformed/partial meta: null values, missing keys, and
+        non-dict entries are skipped rather than raising. next_slot_id is
+        always bumped past the highest slot id to avoid id collisions.
+        """
+        slots_val = meta.get('slots')
+        if slots_val is not None:
+            slots = []
+            for s in slots_val:
+                if not isinstance(s, dict):
+                    continue
+                slots.append({
+                    'id': int(s.get('id', len(slots) + 1)),
+                    'loop_ids': [int(i) for i in (s.get('loop_ids') or [])],
+                })
+            next_id = max(int(meta.get('next_slot_id') or 0),
+                          max([s['id'] for s in slots], default=0) + 1)
             return slots, next_id
         # Migrate legacy scenes: one slot per scene, ids = its playing layers
         slots = []
-        for scene in meta.get('scenes', {}).values():
+        for scene in (meta.get('scenes') or {}).values():
+            if not isinstance(scene, dict):
+                continue
             active = [st['id'] for st in scene.get('layer_states', [])
-                      if st.get('is_playing')]
+                      if isinstance(st, dict) and st.get('is_playing')
+                      and st.get('id') is not None]
             slots.append({'id': len(slots) + 1, 'loop_ids': active})
         return slots, len(slots) + 1
 

@@ -136,3 +136,21 @@ def test_slots_from_meta_empty_when_neither_present():
     slots, next_id = WebLooper._slots_from_meta({})
     assert slots == []
     assert next_id == 1
+
+def test_slots_from_meta_tolerates_null_and_missing_fields():
+    assert WebLooper._slots_from_meta({'slots': None}) == ([], 1)
+    slots, next_id = WebLooper._slots_from_meta({'slots': [{'id': 3}], 'next_slot_id': 4})
+    assert slots == [{'id': 3, 'loop_ids': []}]
+    assert next_id == 4
+
+def test_slots_from_meta_guards_stale_next_id():
+    slots, next_id = WebLooper._slots_from_meta(
+        {'slots': [{'id': 5, 'loop_ids': [0]}], 'next_slot_id': 2})
+    assert next_id == 6
+
+def test_slots_from_meta_skips_non_dict_scene_entries():
+    meta = {'scenes': {'1': 'garbage',
+                       '2': {'layer_states': [{'id': 0, 'is_playing': True}]}}}
+    slots, next_id = WebLooper._slots_from_meta(meta)
+    assert slots == [{'id': 1, 'loop_ids': [0]}]
+    assert next_id == 2
