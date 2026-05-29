@@ -56,3 +56,51 @@ def chain_hash(chain: list) -> str:
     ]
     blob = json.dumps(payload, sort_keys=True).encode()
     return hashlib.sha1(blob).hexdigest()
+
+
+def _make_plugin(effect: dict):
+    """Map one effect dict to a pedalboard plugin instance."""
+    import pedalboard as pb
+    t, p = effect['type'], effect.get('params', {})
+    if t == 'reverb':
+        return pb.Reverb(room_size=p['room_size'], damping=p['damping'],
+                         wet_level=p['wet'], dry_level=1.0 - p['wet'])
+    if t == 'delay':
+        return pb.Delay(delay_seconds=p['time_s'], feedback=p['feedback'], mix=p['mix'])
+    if t == 'chorus':
+        return pb.Chorus(rate_hz=p['rate_hz'], depth=p['depth'], mix=p['mix'])
+    if t == 'distortion':
+        return pb.Distortion(drive_db=p['drive_db'])
+    if t == 'filter':
+        mode = pb.LadderFilter.Mode.LPF12 if p['mode'] == 'LP' else pb.LadderFilter.Mode.HPF12
+        return pb.LadderFilter(mode=mode, cutoff_hz=p['cutoff_hz'], resonance=p['resonance'])
+    raise ValueError(f"unknown effect type: {t}")
+
+
+def make_pedalboard(chain: list):
+    """Build a pedalboard.Pedalboard from the enabled effects in order."""
+    import pedalboard as pb
+    return pb.Pedalboard([_make_plugin(e) for e in chain if e.get('enabled', True)])
+
+
+def render_wet(dry: np.ndarray, chain: list, sample_rate: int) -> np.ndarray:
+    """Render dry through the chain, baking wrapped tails so the loop still seams.
+
+    Tiles dry 3x, processes, and returns the final cycle. Empty/all-disabled
+    chain returns an untouched copy of dry.
+    """
+    active = [e for e in (chain or []) if e.get('enabled', True)]
+    if not active or len(dry) == 0:
+        return dry.copy()
+    board = make_pedalboard(active)
+    n = len(dry)
+    tiled = np.tile(dry.astype(np.float32), 3)
+    processed = np.asarray(board(tiled, sample_rate, reset=True), dtype=np.float32)
+    return processed[2 * n:3 * n].copy()
+
+
+def make_bus_reverb(params: dict):
+    """A persistent single-Reverb pedalboard for the live master bus."""
+    import pedalboard as pb
+    return pb.Pedalboard([pb.Reverb(room_size=params['room_size'], damping=params['damping'],
+                                    wet_level=params['wet'], dry_level=1.0 - params['wet'])])
