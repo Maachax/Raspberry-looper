@@ -754,7 +754,7 @@
         let _lastSlotsJson = '';
         function renderSlots() {
             const json = JSON.stringify(serverState.slots) + JSON.stringify(
-                (serverState.layers || []).map(l => [l.id, l.name, l.color]));
+                (serverState.layers || []).map(l => [l.id, l.name, l.color, l.is_playing]));
             if (json === _lastSlotsJson) return;
             _lastSlotsJson = json;
 
@@ -762,10 +762,15 @@
             const byId = Object.fromEntries(layers.map(l => [l.id, l]));
             const slots = serverState.slots || { list: [], active_id: null, pending_id: null };
 
+            // A slot is "active" when its loop set matches what's currently playing.
+            // Computing it from live state means a manual layer toggle clears the highlight.
+            const playingKey = layers.filter(l => l.is_playing).map(l => l.id).sort((a, b) => a - b).join(',');
+
             const list = document.getElementById('slotsList');
             if (!list) return;
             list.innerHTML = slots.list.map(slot => {
-                const cls = (slot.id === slots.active_id ? ' active' : '')
+                const slotKey = [...slot.loop_ids].sort((a, b) => a - b).join(',');
+                const cls = (slotKey === playingKey ? ' active' : '')
                           + (slot.id === slots.pending_id ? ' pending' : '');
                 const chips = slot.loop_ids.length === 0
                     ? '<span class="slot-empty">drop loops here…</span>'
