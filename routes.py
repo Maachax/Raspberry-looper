@@ -245,6 +245,14 @@ def handle_command(data):
         looper.set_section_loops(data.get('section_id'), data.get('loop_ids', []))
     elif command == 'launch_section':
         looper.launch_section(data.get('section_id'), data.get('quantized', True))
+    elif command == 'fx_set_loop_chain':
+        looper.set_loop_chain(data.get('layer_id'), data.get('chain', []))
+    elif command == 'fx_set_section_override':
+        looper.set_section_override(data.get('section_id'), data.get('layer_id'), data.get('chain', []))
+    elif command == 'fx_clear_section_override':
+        looper.clear_section_override(data.get('section_id'), data.get('layer_id'))
+    elif command == 'fx_set_bus':
+        looper.set_bus(data.get('section_id'), data.get('effect'))
 
     # Broadcast updated state to all clients
     emit('update', looper.get_state(), broadcast=True)
