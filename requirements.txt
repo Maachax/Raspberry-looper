@@ -1,0 +1,15 @@
+# Core
+flask
+flask-socketio
+simple-websocket
+sounddevice
+numpy
+
+# Audio effects (loops play dry without it)
+pedalboard
+
+# Optional: tempo detection
+librosa
+
+# Optional: audio export (MP3 needs ffmpeg installed separately)
+pydub

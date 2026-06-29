@@ -27,6 +27,7 @@ A web-based guitar looper pedal simulator with real-time audio processing, desig
 - `simple-websocket` - WebSocket protocol handling
 - `sounddevice` - Low-latency audio I/O
 - `numpy` - Audio signal processing
+- `pedalboard` - Real-time audio effects (loops play dry without it)
 
 ## Installation
 
@@ -44,7 +45,7 @@ python3 looper_web.py
 ### Manual Installation
 
 ```bash
-pip3 install flask flask-socketio simple-websocket sounddevice numpy
+pip3 install flask flask-socketio simple-websocket sounddevice numpy pedalboard
 ```
 
 ## Usage
