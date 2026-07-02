@@ -23,8 +23,9 @@ Signal chain: Guitar → Audio interface → Amp (direct monitor) + Pi
 - **Per-layer control** — volume and mute per layer, master volume
 - **Export** — mixed MP3/WAV (bus reverb baked in) or individual stems
 - **Web interface** — control from any device on the network (phone-first)
-- **MIDI control** — MPK Mini pads launch sections, knobs mix loops, with
-  MIDI-learn remapping and hot-plug (see the MIDI tab)
+- **MIDI control** — MPK Mini pads launch sections, knobs mix loops and tune
+  FX, full section/FX editing from the keybed, with MIDI-learn remapping and
+  hot-plug (cheat sheet: `docs/midi-cheatsheet.md`)
 
 ## Requirements
 
