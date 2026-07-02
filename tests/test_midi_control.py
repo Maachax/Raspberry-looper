@@ -453,3 +453,47 @@ def test_double_tap_expires_and_other_action_disarms(tmp_path, monkeypatch):
     t[0] = 2.2
     ctl.handle_trigger('pc:9:11', None)         # arms fresh again
     assert len(looper.layers) == 3
+
+
+def test_section_edit_pad_picks_section(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.set_mode('section_edit')
+    ctl.handle_trigger('pc:9:5', None)          # bank A pad 2 = 2nd section
+    assert ctl.editing_section == 22
+
+
+def test_membership_toggle_adds_and_removes(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    looper.sections[0]['loop_ids'] = [0]
+    ctl.set_mode('section_edit')
+    ctl.handle_trigger('pc:9:4', None)          # edit section id 11
+    ctl.handle_trigger('note:0:49', 64)         # toggle loop 2 (idx 1) -> add
+    assert looper.sections[0]['loop_ids'] == [0, 1]
+    ctl.handle_trigger('note:0:48', 64)         # toggle loop 1 (idx 0) -> remove
+    assert looper.sections[0]['loop_ids'] == [1]
+    ctl.handle_trigger('note:0:55', 64)         # loop 8 doesn't exist -> no-op
+    assert looper.sections[0]['loop_ids'] == [1]
+
+
+def test_membership_noop_without_edited_section(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.set_mode('section_edit')                # no active section seeded
+    assert ctl.editing_section is None
+    ctl.handle_trigger('note:0:48', 64)
+    assert looper.sections[0]['loop_ids'] == []
+
+
+def test_delete_section_double_tap_and_exit(tmp_path, monkeypatch):
+    looper, ctl, _ = make_controller(tmp_path)
+    t = [0.0]
+    monkeypatch.setattr(time, 'monotonic', lambda: t[0])
+    ctl.set_mode('section_edit')
+    ctl.handle_trigger('pc:9:4', None)
+    ctl.handle_trigger('note:0:71', 64)         # arm
+    assert len(looper.sections) == 2
+    t[0] = 0.4
+    ctl.handle_trigger('note:0:71', 64)         # confirm
+    assert len(looper.sections) == 1
+    assert ctl.editing_section is None
+    ctl.handle_trigger('note:0:72', 64)         # exit key
+    assert ctl.mode == 'play'

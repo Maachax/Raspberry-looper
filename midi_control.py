@@ -230,6 +230,32 @@ class MidiController:
         if action == 'toggle_fx_edit':
             self.set_mode('play' if self.mode == 'fx_edit' else 'fx_edit')
             return
+        if action.startswith('edit_section_'):
+            idx = int(action.rsplit('_', 1)[1]) - 1
+            sections = self.looper.sections
+            if idx < len(sections):
+                self.editing_section = sections[idx]['id']
+            return
+        if action.startswith('toggle_member_'):
+            if self.editing_section is None:
+                return
+            section = next((s for s in self.looper.sections
+                            if s['id'] == self.editing_section), None)
+            loop_idx = int(action.rsplit('_', 1)[1]) - 1
+            if section is None or loop_idx >= len(self.looper.layers):
+                return
+            ids = list(section['loop_ids'])
+            if loop_idx in ids:
+                ids.remove(loop_idx)
+            else:
+                ids.append(loop_idx)
+            self.looper.set_section_loops(section['id'], ids)
+            return
+        if action == 'delete_section':
+            if self.editing_section is not None:
+                self.looper.delete_section(self.editing_section)
+                self.editing_section = None
+            return
         if action == 'record_toggle':
             self._record_toggle()
         elif action == 'tap_tempo':
