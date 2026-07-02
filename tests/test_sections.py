@@ -189,3 +189,7 @@ def test_sections_from_meta_old_format_defaults_empty_name():
     meta = {'sections': [{'id': 1, 'loop_ids': [0]}], 'next_section_id': 2}
     sections, _ = WebLooper._sections_from_meta(meta)
     assert sections[0]['name'] == ''
+
+
+def test_quantize_disabled_by_default():
+    assert WebLooper().quantize_enabled is False

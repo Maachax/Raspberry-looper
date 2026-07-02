@@ -889,23 +889,36 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 10px;
+    width: 2px;                 /* the line IS the trim point */
+    margin-left: -1px;
     background: var(--accent);
     cursor: ew-resize;
     z-index: 10;
 }
-.trim-handle::after {
+.trim-handle::before {          /* fat invisible touch zone centered on the line */
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -21px;
+    right: -21px;
+}
+.trim-handle::after {           /* grip tab hangs to the side, clear of the line */
     content: '⋮⋮';
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    top: 0;
+    width: 18px;
+    height: 26px;
+    background: var(--accent);
     color: #fff;
     font-size: 9px;
     letter-spacing: -2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
-.trim-handle-start { border-radius: 3px 0 0 3px; }
-.trim-handle-end   { border-radius: 0 3px 3px 0; }
+.trim-handle-start::after { left: 1px; border-radius: 0 0 8px 0; }
+.trim-handle-end::after   { right: 1px; border-radius: 0 0 0 8px; }
 
 .waveform-playhead {
     position: absolute;
@@ -2159,12 +2172,6 @@ body.edit-mode .layer-expanded { display: flex; }
     .fx-select { min-height: 44px; font-size: 15px; }
     .fx-chip { min-height: 40px; display: inline-flex; align-items: center; padding: 0 12px; }
 
-    /* trim editor: fat handles */
-    .trim-handle { width: 28px; }
-    .trim-handle::after {
-        content: ''; position: absolute; top: 0; bottom: 0;
-        left: -12px; right: -12px;               /* 44px+ hit area */
-    }
     .trim-controls .btn { min-height: 48px; flex: 1; }
 
     /* MIDI + sessions rows */

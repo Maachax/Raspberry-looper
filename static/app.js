@@ -1356,7 +1356,7 @@
             
             // Update handles
             document.getElementById('trimHandleStart').style.left = `${startRatio * 100}%`;
-            document.getElementById('trimHandleEnd').style.left = `calc(${endRatio * 100}% - 12px)`;
+            document.getElementById('trimHandleEnd').style.left = `${endRatio * 100}%`;
             
             // Update inputs
             document.getElementById('trimStartInput').value = trimStart.toFixed(2);

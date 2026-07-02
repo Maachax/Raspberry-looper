@@ -8,7 +8,7 @@ PLAY: launch section 1–8 · SECTION EDIT: pick section 1–8 to edit
 
 ## Pads — Bank B (actions, every mode)
 | 1 ● Rec/Overdub | 2 Tap tempo | 3 Create section | 4 Save session |
-| 5 SECTION EDIT | 6 FX EDIT | 7 Mute selected | 8 Delete selected ✕✕ |
+| 5 SECTION EDIT | 6 FX EDIT | 7 – | 8 Delete selected ✕✕ |
 
 (✕✕ = tap twice within 1 s)
 

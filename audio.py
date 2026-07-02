@@ -150,7 +150,7 @@ class WebLooper:
         # Tempo settings
         self.bpm = 120.0                # Beats per minute
         self.beats_per_bar = 4          # Time signature (beats per bar)
-        self.quantize_enabled = True    # Auto-snap to nearest bar
+        self.quantize_enabled = False   # Auto-snap to nearest bar (off by default)
         
         # Master volume (0.0 to 1.0)
         self.master_volume = 0.8        # Default 80% - leaves headroom

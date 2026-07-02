@@ -63,7 +63,6 @@ DEFAULT_BINDINGS = {
         f'pc:9:{_PAD_B_READING_ORDER[3]}': 'save_session',
         f'pc:9:{_PAD_B_READING_ORDER[4]}': 'toggle_section_edit',
         f'pc:9:{_PAD_B_READING_ORDER[5]}': 'toggle_fx_edit',
-        f'pc:9:{_PAD_B_READING_ORDER[6]}': 'mute_selected',
         f'pc:9:{_PAD_B_READING_ORDER[7]}': 'delete_selected',
         'note:0:72': 'exit_mode',
     },

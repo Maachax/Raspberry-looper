@@ -355,7 +355,7 @@ def test_phase2_default_bindings():
     assert g['pc:9:15'] == 'save_session'          # bank B pad 4
     assert g['pc:9:8'] == 'toggle_section_edit'    # bank B pad 5
     assert g['pc:9:9'] == 'toggle_fx_edit'         # bank B pad 6
-    assert g['pc:9:10'] == 'mute_selected'         # bank B pad 7
+    assert 'pc:9:10' not in g                      # bank B pad 7 unbound
     assert g['pc:9:11'] == 'delete_selected'       # bank B pad 8
     assert g['note:0:72'] == 'exit_mode'           # top key everywhere
     sel = DEFAULT_BINDINGS['select']
@@ -434,6 +434,9 @@ def test_save_session_fires_callback(tmp_path):
 def test_mute_selected(tmp_path):
     looper, ctl, _ = make_controller(tmp_path)
     ctl.selected_loop = 1
+    ctl.handle_trigger('pc:9:10', None)            # pad 7 unbound by default
+    assert looper.calls == []
+    ctl.bindings['global']['pc:9:10'] = 'mute_selected'   # still learnable
     ctl.handle_trigger('pc:9:10', None)
     assert looper.calls[-1] == 'toggle_layer:1'
 
@@ -460,7 +463,7 @@ def test_double_tap_expires_and_other_action_disarms(tmp_path, monkeypatch):
     t[0] = 2.0                                  # window expired
     ctl.handle_trigger('pc:9:11', None)         # re-arms, doesn't fire
     assert len(looper.layers) == 3
-    ctl.handle_trigger('pc:9:10', None)         # different action disarms
+    ctl.handle_trigger('pc:9:13', None)         # different action (tap tempo) disarms
     assert ctl.status()['confirm'] is None
     t[0] = 2.2
     ctl.handle_trigger('pc:9:11', None)         # arms fresh again
