@@ -2055,6 +2055,22 @@
         function mobileSave() { mobileMore('sessions'); }
 
         // =================================================================
+        // SCREEN WAKE LOCK — the phone is the MPK's display; don't sleep
+        // =================================================================
+
+        let wakeLock = null;
+        async function acquireWakeLock() {
+            if (!('wakeLock' in navigator)) return;
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+            } catch (e) { /* denied (battery saver etc.) — fine */ }
+        }
+        document.addEventListener('pointerdown', () => acquireWakeLock(), { once: true });
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') acquireWakeLock();
+        });
+
+        // =================================================================
         // INITIALIZATION
         // =================================================================
 
