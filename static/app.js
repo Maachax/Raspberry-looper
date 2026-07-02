@@ -554,6 +554,7 @@
                 updateUI();
                 renderMidiPanel();
                 renderMidiBanner();
+                applyTrimPreviewFromMidi();
             });
 
             socket.on('sessions_list', (data) => {
@@ -1007,6 +1008,7 @@
             document.getElementById('fxBus').innerHTML =
                 `<label class="fx-bus-toggle"><input type="checkbox" ${busOn ? 'checked' : ''} onchange="fxToggleBus(this.checked)"> enabled</label>` +
                 (busOn ? `<div class="fx-params">${rp.map(p => fxParamCtl(p, bus.params[p.name], 0, true)).join('')}</div>` : '');
+            reportUiContext();
         }
 
         // =================================================================
@@ -1108,7 +1110,15 @@
             if (!el || !midi) return;
 
             if (midi.mode === 'play') {
-                el.style.display = 'none';
+                if (midi.ui_context && midi.ui_context !== 'home') {
+                    el.style.display = '';
+                    el.className = 'midi-mode-banner banner-knobs';
+                    el.textContent = midi.ui_context === 'trim'
+                        ? 'KNOBS → TRIM  (A key applies)'
+                        : 'KNOBS → FX';
+                } else {
+                    el.style.display = 'none';
+                }
             } else {
                 el.style.display = '';
                 el.className = 'midi-mode-banner ' +
@@ -1214,6 +1224,7 @@
             } else {
                 section.classList.remove('expanded');
             }
+            reportUiContext();
         }
         
         function initTrimEditor() {
@@ -1949,6 +1960,7 @@
             performanceMode = !performanceMode;
             applyViewMode();
             localStorage.setItem('looper_view', performanceMode ? 'perform' : 'edit');
+            reportUiContext();
         }
 
         function applyViewMode() {
@@ -1977,6 +1989,7 @@
                 document.querySelectorAll('.side-icon').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.side-panel').forEach(p => p.classList.remove('active'));
                 document.body.classList.remove('mobile-panel');
+                reportUiContext();
                 return;
             }
 
@@ -1996,6 +2009,7 @@
             if (name === 'sections') renderSections();
             if (name === 'fx') renderFx();
             document.body.classList.add('mobile-panel');
+            reportUiContext();
         }
 
         // =================================================================
@@ -2037,6 +2051,34 @@
         }
 
         function mobileSave() { mobileMore('sessions'); }
+
+        // =================================================================
+        // UI CONTEXT — the MPK knobs follow what the screen shows
+        // =================================================================
+
+        let _lastUiContext = '';
+        function reportUiContext() {
+            let ctx = { context: 'home' };
+            if (document.body.classList.contains('edit-mode') && trimEditorExpanded) {
+                ctx = { context: 'trim' };
+            } else if (activeSidePanel === 'fx') {
+                ctx = { context: 'fx', fx_loop: fxLoopId, fx_slot: fxActiveIdx };
+            }
+            const j = JSON.stringify(ctx);
+            if (j === _lastUiContext) return;
+            _lastUiContext = j;
+            sendCommand('ui_context', ctx);
+        }
+
+        function applyTrimPreviewFromMidi() {
+            const tp = serverState.midi && serverState.midi.trim_preview;
+            if (!tp || !trimEditorExpanded) return;
+            const dur = originalDuration || serverState.master_duration || 0;
+            if (!dur) return;
+            trimStart = tp.start * dur;
+            trimEnd = tp.end * dur;
+            updateTrimUI();
+        }
 
         // =================================================================
         // SCREEN WAKE LOCK — the phone is the MPK's display; don't sleep

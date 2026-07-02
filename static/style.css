@@ -2180,3 +2180,4 @@ body.edit-mode .layer-expanded { display: flex; }
 /* ===== Section membership: tap-to-toggle chips ===== */
 .section-chip { cursor: pointer; }
 .section-chip.chip-out { opacity: 0.35; border-style: dashed; }
+.midi-mode-banner.banner-knobs { background: #4fd1c5; color: #1a1a1a; }
