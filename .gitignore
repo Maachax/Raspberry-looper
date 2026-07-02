@@ -1,0 +1,42 @@
+# Virtual environment (created in repo root)
+bin/
+include/
+lib/
+lib64
+share/
+pyvenv.cfg
+looper-venv/
+venv/
+.venv/
+env/
+
+# Runtime data
+_sessions/
+_config.json
+
+# BMad working dirs
+_bmad/
+_bmad-output/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE / local tooling
+.claude/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+.superpowers/
