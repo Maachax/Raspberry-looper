@@ -5,6 +5,7 @@ After=sound.target network.target
 [Service]
 Type=simple
 User=max
+Environment=PYTHONUNBUFFERED=1
 WorkingDirectory=/home/max/looper
 ExecStart=/home/max/looper/bin/python main.py --headless
 Restart=on-failure
