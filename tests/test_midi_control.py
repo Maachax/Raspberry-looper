@@ -151,6 +151,11 @@ class FakeLooper:
         del self.layers[idx]
         return True
 
+    def set_loop_chain(self, idx, chain):
+        self.layers[idx].fx_chain = chain
+        self.calls.append(f'set_loop_chain:{idx}')
+        return True
+
 
 def make_controller(tmp_path):
     looper = FakeLooper()
@@ -497,3 +502,64 @@ def test_delete_section_double_tap_and_exit(tmp_path, monkeypatch):
     assert ctl.editing_section is None
     ctl.handle_trigger('note:0:72', 64)         # exit key
     assert ctl.mode == 'play'
+
+
+def test_fx_add_appends_default_effect_and_selects_it(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.selected_loop = 1
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('note:0:60', 64)         # add reverb
+    ctl.handle_trigger('note:0:61', 64)         # add delay
+    chain = looper.layers[1].fx_chain
+    assert [e['type'] for e in chain] == ['reverb', 'delay']
+    assert chain[0]['enabled'] is True
+    assert ctl.selected_fx_slot == 1            # follows the newest effect
+
+
+def test_fx_slot_stepping_clamps(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.selected_loop = 1
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('note:0:60', 64)
+    ctl.handle_trigger('note:0:61', 64)
+    ctl.handle_trigger('note:0:65', 64)         # prev -> 0
+    assert ctl.selected_fx_slot == 0
+    ctl.handle_trigger('note:0:65', 64)         # prev at 0 stays 0
+    assert ctl.selected_fx_slot == 0
+    ctl.handle_trigger('note:0:67', 64)         # next -> 1
+    ctl.handle_trigger('note:0:67', 64)         # next at end stays
+    assert ctl.selected_fx_slot == 1
+
+
+def test_fx_toggle_enabled(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.selected_loop = 1
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('note:0:60', 64)
+    ctl.handle_trigger('note:0:69', 64)
+    assert looper.layers[1].fx_chain[0]['enabled'] is False
+    ctl.handle_trigger('note:0:69', 64)
+    assert looper.layers[1].fx_chain[0]['enabled'] is True
+
+
+def test_fx_remove_double_tap(tmp_path, monkeypatch):
+    looper, ctl, _ = make_controller(tmp_path)
+    t = [0.0]
+    monkeypatch.setattr(time, 'monotonic', lambda: t[0])
+    ctl.selected_loop = 1
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('note:0:60', 64)
+    ctl.handle_trigger('note:0:71', 64)         # arm
+    assert len(looper.layers[1].fx_chain) == 1
+    t[0] = 0.3
+    ctl.handle_trigger('note:0:71', 64)         # confirm
+    assert looper.layers[1].fx_chain == []
+    assert ctl.selected_fx_slot == 0
+
+
+def test_fx_keys_noop_with_no_layers(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    looper.layers.clear()
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('note:0:60', 64)         # must not raise
+    assert looper.calls == []

@@ -1,9 +1,11 @@
 """MPK Mini MIDI control surface: triggers, bindings, dispatch, hot-plug."""
+import copy
 import json
 import threading
 import time
 
 from config import CONFIG_PATH
+from effects import default_effect, EFFECT_SCHEMAS
 
 
 def normalize(msg):
@@ -163,6 +165,14 @@ class MidiController:
             self.selected_fx_slot = 0
         self.notify()
 
+    # ------------------------------------------------------------ fx edit
+    def _fx_chain(self):
+        """(loop_idx, deep copy of its chain) for the selected loop, or (None, None)."""
+        idx = self.effective_loop()
+        if idx is None:
+            return None, None
+        return idx, copy.deepcopy(self.looper.layers[idx].fx_chain)
+
     # ------------------------------------------------------------ dispatch
     def handle_trigger(self, trigger, value):
         if self.learn is not None:
@@ -255,6 +265,39 @@ class MidiController:
             if self.editing_section is not None:
                 self.looper.delete_section(self.editing_section)
                 self.editing_section = None
+            return
+        if action.startswith('fx_add_'):
+            idx, chain = self._fx_chain()
+            if idx is None:
+                return
+            chain.append(default_effect(action[len('fx_add_'):]))
+            self.looper.set_loop_chain(idx, chain)
+            self.selected_fx_slot = len(chain) - 1
+            return
+        if action in ('fx_prev_slot', 'fx_next_slot'):
+            idx, chain = self._fx_chain()
+            if idx is None or not chain:
+                return
+            step = -1 if action == 'fx_prev_slot' else 1
+            self.selected_fx_slot = max(0, min(len(chain) - 1,
+                                               self.selected_fx_slot + step))
+            return
+        if action == 'fx_toggle_enabled':
+            idx, chain = self._fx_chain()
+            if idx is None or self.selected_fx_slot >= len(chain):
+                return
+            effect = chain[self.selected_fx_slot]
+            effect['enabled'] = not effect.get('enabled', True)
+            self.looper.set_loop_chain(idx, chain)
+            return
+        if action == 'fx_remove':
+            idx, chain = self._fx_chain()
+            if idx is None or self.selected_fx_slot >= len(chain):
+                return
+            del chain[self.selected_fx_slot]
+            self.looper.set_loop_chain(idx, chain)
+            self.selected_fx_slot = max(0, min(self.selected_fx_slot,
+                                               len(chain) - 1))
             return
         if action == 'record_toggle':
             self._record_toggle()
