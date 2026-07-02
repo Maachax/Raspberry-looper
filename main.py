@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+import argparse
 import sys
 from pathlib import Path
 
 import sounddevice as sd
 
 from config import SAMPLE_RATE
+from devices import (load_saved_device_name, save_device_name,
+                     find_device_by_name, resolve_device)
 from audio import WebLooper, PYDUB_AVAILABLE, FFMPEG_AVAILABLE, LIBROSA_AVAILABLE, warmup_librosa
 import routes
 from routes import app, socketio
@@ -38,6 +41,13 @@ def list_audio_devices():
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Guitar Looper")
+    parser.add_argument('--headless', action='store_true',
+                        help="never prompt; use saved/auto-detected audio device, exit 1 if none")
+    parser.add_argument('--pick', action='store_true',
+                        help="force the interactive device picker even if a device is saved")
+    args = parser.parse_args()
+
     print("=" * 60)
     print("🎸 GUITAR LOOPER")
     print("=" * 60)
@@ -53,24 +63,42 @@ def main():
     else:
         print("  ⚠ pydub not installed - export disabled")
 
-    # List and select audio device
-    valid_devices = list_audio_devices()
+    # Select audio device: remembered by name, headless-safe
+    devices = sd.query_devices()
+    saved_name = load_saved_device_name()
 
-    if not valid_devices:
-        print("\n❌ No suitable audio device found!")
-        print("   Please connect an audio interface with input and output.")
-        return
+    if args.headless:
+        device = resolve_device(devices, saved_name)
+        if device is None:
+            print("\n❌ No suitable audio device found; exiting so systemd can retry.")
+            sys.exit(1)
+        print(f"\n✓ Using device [{device}] {devices[device]['name']}")
+    else:
+        device = None if args.pick else find_device_by_name(devices, saved_name)
+        if device is not None:
+            print(f"\n✓ Using saved device [{device}] {devices[device]['name']}"
+                  " (run with --pick to change)")
+        else:
+            valid_devices = list_audio_devices()
 
-    device_choice = input("\nDevice number [Enter for default]: ").strip()
-    device = None
+            if not valid_devices:
+                print("\n❌ No suitable audio device found!")
+                print("   Please connect an audio interface with input and output.")
+                return
 
-    if device_choice:
-        try:
-            device = int(device_choice)
-            if device not in valid_devices:
-                print(f"⚠ Device {device} may not support input+output")
-        except ValueError:
-            pass
+            device_choice = input("\nDevice number [Enter for default]: ").strip()
+            device = None
+
+            if device_choice:
+                try:
+                    device = int(device_choice)
+                    if device not in valid_devices:
+                        print(f"⚠ Device {device} may not support input+output")
+                except ValueError:
+                    pass
+
+            if device is not None:
+                save_device_name(sd.query_devices(device)['name'])
 
     # Pre-compile librosa numba JIT functions before the audio stream starts
     warmup_librosa()
