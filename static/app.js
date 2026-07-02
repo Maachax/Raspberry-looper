@@ -552,6 +552,7 @@
                     clearScaleCandidates();
                 }
                 updateUI();
+                renderMidiPanel();
             });
 
             socket.on('sessions_list', (data) => {
@@ -1062,6 +1063,43 @@
                 item.querySelector('.btn-load-session').onclick = () => loadSession(s.id, s.name);
                 item.querySelector('.btn-delete-session').onclick = () => deleteSession(s.id, s.name);
                 el.appendChild(item);
+            });
+        }
+
+        // =================================================================
+        // MIDI
+        // =================================================================
+
+        function midiLearn(actionId) {
+            sendCommand('midi_learn', { action: actionId });
+        }
+
+        function renderMidiPanel() {
+            const midi = serverState.midi;
+            const statusEl = document.getElementById('midiStatus');
+            const listEl = document.getElementById('midiActions');
+            if (!midi || !statusEl || !listEl) return;
+
+            statusEl.textContent = midi.connected ? '● connected' : '● offline';
+            statusEl.classList.toggle('on', midi.connected);
+
+            listEl.innerHTML = '';
+            (midi.actions || []).forEach(a => {
+                const row = document.createElement('div');
+                row.className = 'midi-action-row';
+                const learning = midi.learn === a.id;
+                row.innerHTML = `
+                    <span class="midi-action-label"></span>
+                    <span class="midi-action-trigger mono"></span>
+                    <button class="btn midi-learn-btn"></button>
+                `;
+                row.querySelector('.midi-action-label').textContent = a.label;
+                row.querySelector('.midi-action-trigger').textContent = a.trigger || '—';
+                const btn = row.querySelector('.midi-learn-btn');
+                btn.textContent = learning ? 'PRESS…' : 'LEARN';
+                btn.classList.toggle('learning', learning);
+                btn.onclick = () => midiLearn(a.id);
+                listEl.appendChild(row);
             });
         }
 

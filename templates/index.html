@@ -82,6 +82,8 @@
                     onclick="setSidePanel('sections')" title="Sections / Launcher">▦</button>
             <button class="side-icon" id="sideBtnFx" data-panel="fx"
                     onclick="setSidePanel('fx')" title="Effects">≈</button>
+            <button class="side-icon" id="sideBtnMidi" data-panel="midi"
+                    onclick="setSidePanel('midi')" title="MIDI Control">🎹</button>
         </div>
 
         <!-- Panel content (hidden when no panel active) -->
@@ -193,6 +195,15 @@
                     <div class="fx-bus-head">BUS — reverb (all loops)</div>
                     <div id="fxBus"></div>
                 </div>
+            </div>
+
+            <!-- MIDI panel -->
+            <div class="side-panel" id="panelMidi">
+                <div class="panel-header accent-primary">
+                    <span>MIDI</span>
+                    <span class="midi-status" id="midiStatus">● offline</span>
+                </div>
+                <div class="midi-actions" id="midiActions"></div>
             </div>
 
         </div>
