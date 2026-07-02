@@ -17,6 +17,9 @@ EXPORT_WAV_SAMPLE_WIDTH = 2  # 16-bit
 SESSIONS_DIR = Path(__file__).parent / '_sessions'
 SESSIONS_DIR.mkdir(exist_ok=True)
 
+# Persisted runtime config, e.g. remembered audio device (relative to this script)
+CONFIG_PATH = Path(__file__).parent / '_config.json'
+
 # Layer color palette (cycles by layer id)
 LAYER_COLORS = [
     '#667eea',  # Purple
