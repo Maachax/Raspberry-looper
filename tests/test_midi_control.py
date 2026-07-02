@@ -256,3 +256,16 @@ def test_on_message_routes_through_normalize(tmp_path):
     assert looper.launched == [11]
     ctl._on_message(mido.Message('note_off', channel=0, note=48))  # ignored
     assert looper.launched == [11]
+
+
+def test_get_state_has_midi_block(tmp_path):
+    from audio import WebLooper
+    looper = WebLooper()
+    state = looper.get_state()
+    assert state['midi'] == {'connected': False, 'mode': 'play',
+                             'learn': None, 'actions': []}
+    ctl = MidiController(looper, notify=lambda: None,
+                         _config_path=tmp_path / '_config.json')
+    looper.midi_status = ctl.status
+    assert looper.get_state()['midi']['mode'] == 'play'
+    assert looper.get_state()['midi']['actions']  # real action list now

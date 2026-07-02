@@ -107,6 +107,19 @@ def main():
     routes.looper = WebLooper(device=device)
     routes.looper.start_stream()
 
+    # MIDI control surface (optional — requires mido + python-rtmidi)
+    try:
+        from midi_control import MidiController
+        midi = MidiController(
+            routes.looper,
+            notify=lambda: socketio.emit('update', routes.looper.get_state()))
+        routes.looper.midi_status = midi.status
+        routes.midi = midi
+        midi.start()
+        print("🎹 MIDI control enabled (waiting for controller)")
+    except ImportError:
+        print("💡 Tip: pip install mido python-rtmidi for MIDI control")
+
     # Display access URL
     ip = get_local_ip()
     print("\n" + "=" * 60)

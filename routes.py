@@ -10,6 +10,9 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Global looper instance (set by main.py)
 looper: WebLooper = None
 
+# Global MIDI controller instance (set by main.py; None if MIDI unavailable)
+midi = None
+
 # =============================================================================
 # ROUTES
 # =============================================================================
@@ -208,6 +211,9 @@ def handle_command(data):
         looper.clear_all()
     elif command == 'set_bpm':
         looper.set_bpm(data.get('bpm', 120.0))
+    elif command == 'midi_learn':
+        if midi is not None:
+            midi.arm_learn(data.get('action', ''))
     elif command == 'set_beats_per_bar':
         looper.set_beats_per_bar(data.get('beats', 4))
     elif command == 'set_quantize':

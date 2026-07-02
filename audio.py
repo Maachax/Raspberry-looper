@@ -160,6 +160,9 @@ class WebLooper:
         
         # Thread safety
         self.lock = threading.Lock()
+
+        # Set by main.py when a MidiController exists; get_state() includes it
+        self.midi_status = None
         
         # Audio stream
         self.stream = None
@@ -1605,6 +1608,8 @@ class WebLooper:
                                           LooperState.RECORDING_OVERDUB))
         
         return {
+            'midi': (self.midi_status() if self.midi_status else
+                     {'connected': False, 'mode': 'play', 'learn': None, 'actions': []}),
             'state': state,
             'master_duration': master_duration,
             'master_volume': master_volume,
