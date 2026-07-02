@@ -2076,3 +2076,12 @@ body.edit-mode .layer-expanded { display: flex; }
 .midi-action-trigger { font-size: 10px; opacity: 0.6; min-width: 64px; }
 .midi-learn-btn { font-size: 10px; padding: 3px 8px; }
 .midi-learn-btn.learning { background: #d69e2e; color: #000; }
+
+/* ===== MIDI mode banner + selection ===== */
+.midi-mode-banner {
+    padding: 2px 10px; border-radius: 4px; font-size: 11px;
+    font-weight: 700; letter-spacing: 0.06em; margin-left: 10px;
+}
+.midi-mode-banner.banner-section { background: #ed8936; color: #1a1a1a; }
+.midi-mode-banner.banner-fx { background: #9f7aea; color: #1a1a1a; }
+.layer-row.midi-selected { outline: 2px solid #9f7aea; outline-offset: -2px; }

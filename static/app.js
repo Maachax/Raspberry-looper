@@ -553,6 +553,7 @@
                 }
                 updateUI();
                 renderMidiPanel();
+                renderMidiBanner();
             });
 
             socket.on('sessions_list', (data) => {
@@ -1101,6 +1102,42 @@
                 btn.onclick = () => midiLearn(a.id);
                 listEl.appendChild(row);
             });
+        }
+
+        function renderMidiBanner() {
+            const el = document.getElementById('midiModeBanner');
+            const midi = serverState.midi;
+            if (!el || !midi) return;
+
+            if (midi.mode === 'play') {
+                el.style.display = 'none';
+            } else {
+                el.style.display = '';
+                el.className = 'midi-mode-banner ' +
+                    (midi.mode === 'section_edit' ? 'banner-section' : 'banner-fx');
+                if (midi.mode === 'section_edit') {
+                    const sec = (serverState.sections || [])
+                        .find(s => s.id === midi.editing_section);
+                    el.textContent = 'SECTION EDIT — ' +
+                        (sec ? (sec.name || `#${sec.id}`) : 'hit a pad to pick');
+                } else {
+                    const loop = (serverState.layers || [])[midi.selected_loop];
+                    const fx = loop ? loop.fx_chain[midi.selected_fx_slot] : null;
+                    el.textContent = 'FX EDIT — ' + (loop ? loop.name : 'no loop') +
+                        (fx ? ` · ${fx.type}${fx.enabled === false ? ' (off)' : ''}`
+                            : ' · empty chain');
+                }
+                if (midi.confirm) el.textContent += '  — tap again to confirm ✕';
+            }
+
+            // FX panel follows the MIDI cursor while in FX EDIT
+            if (midi.mode === 'fx_edit' && midi.selected_loop !== null) {
+                if (fxLoopId !== midi.selected_loop || fxActiveIdx !== midi.selected_fx_slot) {
+                    fxLoopId = midi.selected_loop;
+                    fxActiveIdx = midi.selected_fx_slot;
+                    if (activeSidePanel === 'fx') renderFx();
+                }
+            }
         }
 
         // =================================================================
@@ -1789,7 +1826,7 @@
                         ? `<button class="layer-trim-btn" title="Trim master loop" onclick="event.stopPropagation(); openTrimEditor()">✂</button>`
                         : '';
                     return `
-                        <div class="layer-row ${layer.is_playing ? '' : 'muted'}"
+                        <div class="layer-row ${layer.is_playing ? '' : 'muted'} ${serverState.midi && serverState.midi.mode !== 'play' && serverState.midi.selected_loop === layer.id ? 'midi-selected' : ''}"
                              style="border-left-color: ${layer.color}"
                              onclick="document.body.classList.contains('edit-mode') && toggleLayer(${layer.id})">
                             <span class="layer-name" style="color: ${layer.color}">${layer.name}</span>
