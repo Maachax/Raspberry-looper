@@ -800,11 +800,19 @@ class WebLooper:
             sections.append({'id': len(sections) + 1, 'loop_ids': active, 'fx_overrides': {}})
         return sections, len(sections) + 1
 
+    @staticmethod
+    def _session_dir(session_id: str):
+        """Resolve a session id to its directory, rejecting path escapes."""
+        session_dir = (SESSIONS_DIR / session_id).resolve()
+        if session_dir.parent != SESSIONS_DIR.resolve():
+            return None
+        return session_dir
+
     def load_session(self, session_id: str) -> dict:
         """Load a session from disk, replacing current state."""
-        session_dir = SESSIONS_DIR / session_id
+        session_dir = self._session_dir(session_id)
 
-        if not session_dir.exists():
+        if session_dir is None or not session_dir.exists():
             return {'success': False, 'error': 'Session not found'}
 
         try:
@@ -854,8 +862,8 @@ class WebLooper:
 
     def delete_session(self, session_id: str) -> dict:
         """Delete a session from disk."""
-        session_dir = SESSIONS_DIR / session_id
-        if not session_dir.exists():
+        session_dir = self._session_dir(session_id)
+        if session_dir is None or not session_dir.exists():
             return {'success': False, 'error': 'Session not found'}
         try:
             import shutil
