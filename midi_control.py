@@ -124,9 +124,11 @@ class MidiController:
     """Dispatches normalized MIDI triggers to looper actions. One instance,
     one manager thread (started by start(); tests call handle_trigger directly)."""
 
-    def __init__(self, looper, notify, port_match='MPK mini', _config_path=None):
+    def __init__(self, looper, notify, port_match='MPK mini',
+                 on_session_saved=None, _config_path=None):
         self.looper = looper
         self.notify = notify
+        self.on_session_saved = on_session_saved
         self.port_match = port_match
         self._config_path = _config_path
         self.bindings = load_bindings(path=_config_path)
@@ -176,7 +178,44 @@ class MidiController:
         self._run_action(action, value)
         self._notify_debounced()
 
+    _CONFIRM_ACTIONS = {'delete_selected', 'delete_section', 'fx_remove'}
+
+    def _confirmed(self, action):
+        """Double-tap guard: True only on the second tap within 1s."""
+        now = time.monotonic()
+        if (self._confirm and self._confirm[0] == action
+                and now - self._confirm[1] <= 1.0):
+            self._confirm = None
+            return True
+        self._confirm = (action, now)
+        return False
+
     def _run_action(self, action, value):
+        if self._confirm and action != self._confirm[0]:
+            self._confirm = None            # any other action disarms
+        if action in self._CONFIRM_ACTIONS and not self._confirmed(action):
+            return
+        if action == 'create_section':
+            playing = [l.id for l in self.looper.layers if l.is_playing]
+            if playing:
+                section = self.looper.add_section()
+                self.looper.set_section_loops(section['id'], playing)
+            return
+        if action == 'save_session':
+            self.looper.save_session('')
+            if self.on_session_saved:
+                self.on_session_saved()
+            return
+        if action == 'mute_selected':
+            idx = self.effective_loop()
+            if idx is not None:
+                self.looper.toggle_layer(idx)
+            return
+        if action == 'delete_selected':
+            idx = self.effective_loop()
+            if idx is not None and self.looper.delete_layer(idx):
+                self.selected_loop = None
+            return
         if action.startswith('select_loop_'):
             idx = int(action.rsplit('_', 1)[1]) - 1
             if idx < len(self.looper.layers):

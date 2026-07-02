@@ -128,6 +128,29 @@ class FakeLooper:
     def arm_overdub(self): self.calls.append('arm_overdub')
     def cancel_overdub(self): self.calls.append('cancel_overdub')
 
+    def add_section(self):
+        s = {'id': 100 + len(self.sections), 'loop_ids': [], 'fx_overrides': {}}
+        self.sections.append(s)
+        return s
+
+    def set_section_loops(self, sid, ids):
+        next(s for s in self.sections if s['id'] == sid)['loop_ids'] = list(ids)
+
+    def delete_section(self, sid):
+        self.sections = [s for s in self.sections if s['id'] != sid]
+
+    def save_session(self, name):
+        self.calls.append(f'save_session:{name}')
+        return {'success': True, 'session_id': 'x', 'name': name or 'auto'}
+
+    def toggle_layer(self, idx): self.calls.append(f'toggle_layer:{idx}')
+
+    def delete_layer(self, idx):
+        if idx <= 0 or idx >= len(self.layers):
+            return False
+        del self.layers[idx]
+        return True
+
 
 def make_controller(tmp_path):
     looper = FakeLooper()
@@ -366,3 +389,67 @@ def test_knob_k4_unbound_in_fx_edit(tmp_path):
     ctl.set_mode('fx_edit')
     ctl.handle_trigger('cc:0:73', 127)         # K4: reserved in fx_edit
     assert looper.volumes == {}
+
+
+def test_create_section_from_playing_loops(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    looper.layers[1].is_playing = False
+    ctl.handle_trigger('pc:9:14', None)
+    new = looper.sections[-1]
+    assert new['loop_ids'] == [0, 2]           # only the playing loops
+
+
+def test_create_section_noop_when_nothing_playing(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    for l in looper.layers:
+        l.is_playing = False
+    n = len(looper.sections)
+    ctl.handle_trigger('pc:9:14', None)
+    assert len(looper.sections) == n
+
+
+def test_save_session_fires_callback(tmp_path):
+    looper = FakeLooper()
+    saved = []
+    ctl = MidiController(looper, notify=lambda: None,
+                         on_session_saved=lambda: saved.append(1),
+                         _config_path=tmp_path / '_config.json')
+    ctl.handle_trigger('pc:9:15', None)
+    assert looper.calls == ['save_session:']
+    assert saved == [1]
+
+
+def test_mute_selected(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.selected_loop = 1
+    ctl.handle_trigger('pc:9:10', None)
+    assert looper.calls[-1] == 'toggle_layer:1'
+
+
+def test_delete_selected_needs_double_tap(tmp_path, monkeypatch):
+    looper, ctl, _ = make_controller(tmp_path)
+    t = [0.0]
+    monkeypatch.setattr(time, 'monotonic', lambda: t[0])
+    ctl.selected_loop = 2
+    ctl.handle_trigger('pc:9:11', None)        # first tap: arms only
+    assert len(looper.layers) == 3
+    assert ctl.status()['confirm'] == 'delete_selected'
+    t[0] = 0.5
+    ctl.handle_trigger('pc:9:11', None)        # second tap inside 1s: fires
+    assert len(looper.layers) == 2
+    assert ctl.selected_loop is None           # selection cleared
+
+
+def test_double_tap_expires_and_other_action_disarms(tmp_path, monkeypatch):
+    looper, ctl, _ = make_controller(tmp_path)
+    t = [0.0]
+    monkeypatch.setattr(time, 'monotonic', lambda: t[0])
+    ctl.handle_trigger('pc:9:11', None)
+    t[0] = 2.0                                  # window expired
+    ctl.handle_trigger('pc:9:11', None)         # re-arms, doesn't fire
+    assert len(looper.layers) == 3
+    ctl.handle_trigger('pc:9:10', None)         # different action disarms
+    assert ctl.status()['confirm'] is None
+    t[0] = 2.2
+    ctl.handle_trigger('pc:9:11', None)         # arms fresh again
+    assert len(looper.layers) == 3

@@ -112,7 +112,9 @@ def main():
         from midi_control import MidiController
         midi = MidiController(
             routes.looper,
-            notify=lambda: socketio.emit('update', routes.looper.get_state()))
+            notify=lambda: socketio.emit('update', routes.looper.get_state()),
+            on_session_saved=lambda: socketio.emit(
+                'sessions_list', {'sessions': WebLooper.list_sessions()}))
         routes.looper.midi_status = midi.status
         routes.midi = midi
         midi.start()
