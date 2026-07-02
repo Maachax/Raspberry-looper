@@ -312,3 +312,57 @@ def test_status_has_phase2_keys(tmp_path):
     assert st['selected_fx_slot'] == 0
     assert st['editing_section'] is None
     assert st['confirm'] is None
+
+
+def test_phase2_default_bindings():
+    g = DEFAULT_BINDINGS['global']
+    assert g['pc:9:14'] == 'create_section'        # bank B pad 3
+    assert g['pc:9:15'] == 'save_session'          # bank B pad 4
+    assert g['pc:9:8'] == 'toggle_section_edit'    # bank B pad 5
+    assert g['pc:9:9'] == 'toggle_fx_edit'         # bank B pad 6
+    assert g['pc:9:10'] == 'mute_selected'         # bank B pad 7
+    assert g['pc:9:11'] == 'delete_selected'       # bank B pad 8
+    assert g['note:0:72'] == 'exit_mode'           # top key everywhere
+    sel = DEFAULT_BINDINGS['select']
+    assert sel['note:0:48'] == 'select_loop_1'
+    assert sel['note:0:59'] == 'select_loop_12'
+    se = DEFAULT_BINDINGS['section_edit']
+    assert se['pc:9:4'] == 'edit_section_1'        # bank A, reading order
+    assert se['note:0:48'] == 'toggle_member_1'
+    assert se['note:0:71'] == 'delete_section'
+    fx = DEFAULT_BINDINGS['fx_edit']
+    assert fx['note:0:60'] == 'fx_add_reverb'
+    assert fx['note:0:64'] == 'fx_add_filter'
+    assert fx['note:0:65'] == 'fx_prev_slot'
+    assert fx['note:0:67'] == 'fx_next_slot'
+    assert fx['note:0:69'] == 'fx_toggle_enabled'
+    assert fx['note:0:71'] == 'fx_remove'
+    assert fx['cc:0:70'] == 'fx_param_1'
+    assert fx['cc:0:72'] == 'fx_param_3'
+    assert fx['cc:0:76'] == 'bus_room'
+    assert fx['cc:0:77'] == 'bus_wet'
+
+
+def test_dispatch_order_mode_over_select(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    # in play, note 48 selects loop 1
+    ctl.handle_trigger('note:0:48', 64)
+    assert ctl.selected_loop == 0
+    # in fx_edit, cc 70 must NOT reach loop volumes (fx map wins over play map)
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('cc:0:70', 127)
+    assert 0 not in looper.volumes
+    # selection keys still work in fx_edit via the select map
+    ctl.handle_trigger('note:0:49', 64)
+    assert ctl.selected_loop == 1
+    # in section_edit, selection keys do NOT select (they toggle membership)
+    ctl.set_mode('section_edit')
+    ctl.handle_trigger('note:0:50', 64)
+    assert ctl.selected_loop == 1              # unchanged
+
+
+def test_knob_k4_unbound_in_fx_edit(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('cc:0:73', 127)         # K4: reserved in fx_edit
+    assert looper.volumes == {}

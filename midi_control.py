@@ -17,25 +17,77 @@ def normalize(msg):
     return None
 
 
-# action_id -> (mode, human label). Mode 'global' works in every mode.
+# action_id -> (mode, human label). 'global' works everywhere; 'select' is a
+# shared map consulted in play and fx_edit (loop cursor keys).
 ACTIONS = {
     'record_toggle': ('global', 'Record / Overdub'),
     'tap_tempo': ('global', 'Tap tempo'),
+    'create_section': ('global', 'Create section from playing'),
+    'save_session': ('global', 'Save session'),
+    'toggle_section_edit': ('global', 'Section edit mode'),
+    'toggle_fx_edit': ('global', 'FX edit mode'),
+    'mute_selected': ('global', 'Mute selected loop'),
+    'delete_selected': ('global', 'Delete selected loop (double-tap)'),
+    'exit_mode': ('global', 'Exit edit mode'),
     **{f'launch_section_{i}': ('play', f'Launch section {i}') for i in range(1, 9)},
     **{f'loop_volume_{i}': ('play', f'Loop {i} volume') for i in range(1, 9)},
+    **{f'select_loop_{i}': ('select', f'Select loop {i}') for i in range(1, 13)},
+    **{f'edit_section_{i}': ('section_edit', f'Edit section {i}') for i in range(1, 9)},
+    **{f'toggle_member_{i}': ('section_edit', f'Toggle loop {i} in section') for i in range(1, 13)},
+    'delete_section': ('section_edit', 'Delete edited section (double-tap)'),
+    'fx_add_reverb': ('fx_edit', 'Add reverb'),
+    'fx_add_delay': ('fx_edit', 'Add delay'),
+    'fx_add_chorus': ('fx_edit', 'Add chorus'),
+    'fx_add_distortion': ('fx_edit', 'Add distortion'),
+    'fx_add_filter': ('fx_edit', 'Add filter'),
+    'fx_prev_slot': ('fx_edit', 'Previous FX slot'),
+    'fx_next_slot': ('fx_edit', 'Next FX slot'),
+    'fx_toggle_enabled': ('fx_edit', 'Toggle FX on/off'),
+    'fx_remove': ('fx_edit', 'Remove FX (double-tap)'),
+    **{f'fx_param_{i}': ('fx_edit', f'FX param {i}') for i in range(1, 4)},
+    'bus_room': ('fx_edit', 'Bus reverb room'),
+    'bus_wet': ('fx_edit', 'Bus reverb wet'),
 }
 
-_PAD_A_READING_ORDER = [4, 5, 6, 7, 0, 1, 2, 3]  # PC numbers, top-left -> bottom-right
+_PAD_A_READING_ORDER = [4, 5, 6, 7, 0, 1, 2, 3]   # PC numbers, top-left -> bottom-right
+_PAD_B_READING_ORDER = [12, 13, 14, 15, 8, 9, 10, 11]
+_FX_ADD_KEYS = ['reverb', 'delay', 'chorus', 'distortion', 'filter']  # notes 60-64
 
 DEFAULT_BINDINGS = {
     'global': {
-        'pc:9:12': 'record_toggle',   # bank B pad 1 (top-left)
-        'pc:9:13': 'tap_tempo',       # bank B pad 2
+        f'pc:9:{_PAD_B_READING_ORDER[0]}': 'record_toggle',
+        f'pc:9:{_PAD_B_READING_ORDER[1]}': 'tap_tempo',
+        f'pc:9:{_PAD_B_READING_ORDER[2]}': 'create_section',
+        f'pc:9:{_PAD_B_READING_ORDER[3]}': 'save_session',
+        f'pc:9:{_PAD_B_READING_ORDER[4]}': 'toggle_section_edit',
+        f'pc:9:{_PAD_B_READING_ORDER[5]}': 'toggle_fx_edit',
+        f'pc:9:{_PAD_B_READING_ORDER[6]}': 'mute_selected',
+        f'pc:9:{_PAD_B_READING_ORDER[7]}': 'delete_selected',
+        'note:0:72': 'exit_mode',
     },
     'play': {
         **{f'pc:9:{p}': f'launch_section_{i + 1}'
            for i, p in enumerate(_PAD_A_READING_ORDER)},
         **{f'cc:0:{70 + i}': f'loop_volume_{i + 1}' for i in range(8)},
+    },
+    'select': {
+        **{f'note:0:{48 + i}': f'select_loop_{i + 1}' for i in range(12)},
+    },
+    'section_edit': {
+        **{f'pc:9:{p}': f'edit_section_{i + 1}'
+           for i, p in enumerate(_PAD_A_READING_ORDER)},
+        **{f'note:0:{48 + i}': f'toggle_member_{i + 1}' for i in range(12)},
+        'note:0:71': 'delete_section',
+    },
+    'fx_edit': {
+        **{f'note:0:{60 + i}': f'fx_add_{name}' for i, name in enumerate(_FX_ADD_KEYS)},
+        'note:0:65': 'fx_prev_slot',
+        'note:0:67': 'fx_next_slot',
+        'note:0:69': 'fx_toggle_enabled',
+        'note:0:71': 'fx_remove',
+        **{f'cc:0:{70 + i}': f'fx_param_{i + 1}' for i in range(3)},
+        'cc:0:76': 'bus_room',
+        'cc:0:77': 'bus_wet',
     },
 }
 
@@ -114,14 +166,31 @@ class MidiController:
         if self.learn is not None:
             self._bind_learned(trigger)
             return
-        action = (self.bindings.get('global', {}).get(trigger)
-                  or self.bindings.get(self.mode, {}).get(trigger))
+        action = self.bindings.get('global', {}).get(trigger)
+        if action is None:
+            action = self.bindings.get(self.mode, {}).get(trigger)
+        if action is None and self.mode in ('play', 'fx_edit'):
+            action = self.bindings.get('select', {}).get(trigger)
         if action is None:
             return
         self._run_action(action, value)
         self._notify_debounced()
 
     def _run_action(self, action, value):
+        if action.startswith('select_loop_'):
+            idx = int(action.rsplit('_', 1)[1]) - 1
+            if idx < len(self.looper.layers):
+                self.selected_loop = idx
+            return
+        if action == 'exit_mode':
+            self.set_mode('play')
+            return
+        if action == 'toggle_section_edit':
+            self.set_mode('play' if self.mode == 'section_edit' else 'section_edit')
+            return
+        if action == 'toggle_fx_edit':
+            self.set_mode('play' if self.mode == 'fx_edit' else 'fx_edit')
+            return
         if action == 'record_toggle':
             self._record_toggle()
         elif action == 'tap_tempo':
