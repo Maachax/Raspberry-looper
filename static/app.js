@@ -1042,23 +1042,27 @@
                 el.innerHTML = '<div class="sessions-empty">No sessions saved yet</div>';
                 return;
             }
-            el.innerHTML = sessionsList.map(s => {
+            el.innerHTML = '';
+            sessionsList.forEach(s => {
                 const date = s.created_at ? new Date(s.created_at).toLocaleDateString() : '';
                 const bpm = s.bpm ? `${Math.round(s.bpm)} BPM · ` : '';
                 const meta = `${bpm}${s.layer_count} loop${s.layer_count !== 1 ? 's' : ''}${s.section_count ? ` · ${s.section_count} sections` : ''} · ${date}`;
-                return `
-                    <div class="session-item">
-                        <div class="session-info">
-                            <div class="session-name">${s.name}</div>
-                            <div class="session-meta">${meta}</div>
-                        </div>
-                        <button class="btn btn-load-session"
-                                onclick="loadSession('${s.id}', ${JSON.stringify(s.name)})">LOAD</button>
-                        <button class="btn btn-delete-session"
-                                onclick="deleteSession('${s.id}', ${JSON.stringify(s.name)})">✕</button>
+                const item = document.createElement('div');
+                item.className = 'session-item';
+                item.innerHTML = `
+                    <div class="session-info">
+                        <div class="session-name"></div>
+                        <div class="session-meta"></div>
                     </div>
+                    <button class="btn btn-load-session">LOAD</button>
+                    <button class="btn btn-delete-session">✕</button>
                 `;
-            }).join('');
+                item.querySelector('.session-name').textContent = s.name;
+                item.querySelector('.session-meta').textContent = meta;
+                item.querySelector('.btn-load-session').onclick = () => loadSession(s.id, s.name);
+                item.querySelector('.btn-delete-session').onclick = () => deleteSession(s.id, s.name);
+                el.appendChild(item);
+            });
         }
 
         // =================================================================
