@@ -249,6 +249,8 @@ def handle_command(data):
         looper.delete_section(data.get('section_id'))
     elif command == 'set_section_loops':
         looper.set_section_loops(data.get('section_id'), data.get('loop_ids', []))
+    elif command == 'rename_section':
+        looper.rename_section(data.get('section_id'), data.get('name', ''))
     elif command == 'launch_section':
         looper.launch_section(data.get('section_id'), data.get('quantized', True))
     elif command == 'fx_set_loop_chain':

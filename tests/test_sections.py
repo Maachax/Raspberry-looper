@@ -154,3 +154,38 @@ def test_sections_from_meta_skips_non_dict_scene_entries():
     sections, next_id = WebLooper._sections_from_meta(meta)
     assert sections == [{'id': 1, 'loop_ids': [0], 'fx_overrides': {}}]
     assert next_id == 2
+
+
+def test_rename_section():
+    looper = WebLooper()
+    s = looper.add_section()
+    assert s['name'] == ''
+    assert looper.rename_section(s['id'], '  Verse ') is True
+    assert looper.sections[0]['name'] == 'Verse'
+    assert looper.get_state()['sections']['list'][0]['name'] == 'Verse'
+
+
+def test_rename_section_empty_refused():
+    looper = WebLooper()
+    s = looper.add_section()
+    looper.rename_section(s['id'], 'Chorus')
+    assert looper.rename_section(s['id'], '   ') is False
+    assert looper.sections[0]['name'] == 'Chorus'
+
+
+def test_rename_section_missing_id():
+    looper = WebLooper()
+    assert looper.rename_section(999, 'X') is False
+
+
+def test_sections_from_meta_preserves_name():
+    meta = {'sections': [{'id': 1, 'loop_ids': [0], 'name': 'Verse'}],
+            'next_section_id': 2}
+    sections, _ = WebLooper._sections_from_meta(meta)
+    assert sections[0]['name'] == 'Verse'
+
+
+def test_sections_from_meta_old_format_defaults_empty_name():
+    meta = {'sections': [{'id': 1, 'loop_ids': [0]}], 'next_section_id': 2}
+    sections, _ = WebLooper._sections_from_meta(meta)
+    assert sections[0]['name'] == ''

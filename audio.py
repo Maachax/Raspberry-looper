@@ -619,10 +619,23 @@ class WebLooper:
     def add_section(self) -> dict:
         """Append a new empty section and return it."""
         with self.lock:
-            section = {'id': self._next_section_id, 'loop_ids': [], 'fx_overrides': {}}
+            section = {'id': self._next_section_id, 'name': '', 'loop_ids': [],
+                       'fx_overrides': {}}
             self._next_section_id += 1
             self.sections.append(section)
             return section
+
+    def rename_section(self, section_id: int, name: str) -> bool:
+        """Rename a section. Empty/whitespace names are refused."""
+        name = (name or '').strip()
+        if not name:
+            return False
+        with self.lock:
+            section = next((s for s in self.sections if s['id'] == section_id), None)
+            if section is None:
+                return False
+            section['name'] = name
+            return True
 
     def delete_section(self, section_id: int) -> bool:
         """Delete a section. Clears pending/active references to it."""
@@ -749,7 +762,8 @@ class WebLooper:
                     }
                     for l in self.layers
                 ],
-                'sections': [{'id': s['id'], 'loop_ids': list(s['loop_ids']),
+                'sections': [{'id': s['id'], 'name': s.get('name', ''),
+                              'loop_ids': list(s['loop_ids']),
                               'fx_overrides': s.get('fx_overrides', {})} for s in self.sections],
                 'next_section_id': self._next_section_id,
             }
@@ -786,6 +800,7 @@ class WebLooper:
                     continue
                 sections.append({
                     'id': int(s.get('id', len(sections) + 1)),
+                    'name': str(s.get('name') or ''),
                     'loop_ids': [int(i) for i in (s.get('loop_ids') or [])],
                     'fx_overrides': {int(k): v for k, v in (s.get('fx_overrides') or {}).items()},
                 })
@@ -800,7 +815,7 @@ class WebLooper:
             active = [st['id'] for st in scene.get('layer_states', [])
                       if isinstance(st, dict) and st.get('is_playing')
                       and st.get('id') is not None]
-            sections.append({'id': len(sections) + 1, 'loop_ids': active, 'fx_overrides': {}})
+            sections.append({'id': len(sections) + 1, 'name': '', 'loop_ids': active, 'fx_overrides': {}})
         return sections, len(sections) + 1
 
     @staticmethod
@@ -1564,7 +1579,8 @@ class WebLooper:
             input_peak = self.input_peak
             scale_root = self.scale_root
             scale_type = self.scale_type
-            sections_data = [{'id': s['id'], 'loop_ids': list(s['loop_ids']),
+            sections_data = [{'id': s['id'], 'name': s.get('name', ''),
+                              'loop_ids': list(s['loop_ids']),
                               'fx_overrides': s.get('fx_overrides', {})} for s in self.sections]
             pending_section_id = self.pending_section['id'] if self.pending_section else None
             active_section_id = self.active_section_id
