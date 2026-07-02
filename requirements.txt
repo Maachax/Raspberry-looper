@@ -13,3 +13,6 @@ librosa
 
 # Optional: audio export (MP3 needs ffmpeg installed separately)
 pydub
+
+mido
+python-rtmidi
