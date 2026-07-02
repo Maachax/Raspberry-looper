@@ -2176,3 +2176,7 @@ body.edit-mode .layer-expanded { display: flex; }
     /* misc inputs (16px stops iOS zoom-on-focus) */
     input[type="text"], select { min-height: 44px; font-size: 16px; }
 }
+
+/* ===== Section membership: tap-to-toggle chips ===== */
+.section-chip { cursor: pointer; }
+.section-chip.chip-out { opacity: 0.35; border-style: dashed; }

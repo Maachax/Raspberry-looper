@@ -749,23 +749,14 @@
             const quantized = serverState.state === 'playing';
             sendCommand('launch_section', { section_id: sectionId, quantized });
         }
-        function addLoopToSection(sectionId, loopId) {
-            const section = (serverState.sections?.list || []).find(s => s.id === sectionId);
-            if (!section || section.loop_ids.includes(loopId)) return;
-            sendCommand('set_section_loops', { section_id: sectionId, loop_ids: [...section.loop_ids, loopId] });
-        }
-        function removeLoopFromSection(sectionId, loopId) {
+        function toggleLoopInSection(sectionId, loopId) {
+            // tap-to-toggle membership (HTML5 drag-and-drop never fires on touch)
             const section = (serverState.sections?.list || []).find(s => s.id === sectionId);
             if (!section) return;
-            sendCommand('set_section_loops', { section_id: sectionId, loop_ids: section.loop_ids.filter(i => i !== loopId) });
-        }
-        function sectionDragOver(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drop-hover'); }
-        function sectionDragLeave(ev) { ev.currentTarget.classList.remove('drop-hover'); }
-        function sectionDrop(ev, sectionId) {
-            ev.preventDefault();
-            ev.currentTarget.classList.remove('drop-hover');
-            const loopId = parseInt(ev.dataTransfer.getData('text/plain'), 10);
-            if (!Number.isNaN(loopId)) addLoopToSection(sectionId, loopId);
+            const ids = section.loop_ids.includes(loopId)
+                ? section.loop_ids.filter(i => i !== loopId)
+                : [...section.loop_ids, loopId];
+            sendCommand('set_section_loops', { section_id: sectionId, loop_ids: ids });
         }
 
         let _lastSectionsJson = '';
@@ -789,17 +780,16 @@
                 const sectionKey = [...section.loop_ids].sort((a, b) => a - b).join(',');
                 const cls = (sectionKey === playingKey ? ' active' : '')
                           + (section.id === sections.pending_id ? ' pending' : '');
-                const chips = section.loop_ids.length === 0
-                    ? '<span class="section-empty">drop loops here…</span>'
-                    : section.loop_ids.map(id => {
-                        const l = byId[id]; if (!l) return '';
-                        return `<span class="section-chip">
-                            <span class="chip-dot" style="background:${l.color}"></span>${l.name}
-                            <span class="chip-x" onclick="removeLoopFromSection(${section.id}, ${id})">✕</span>
+                const chips = layers.length === 0
+                    ? '<span class="section-empty">record loops first…</span>'
+                    : layers.map(l => {
+                        const inSection = section.loop_ids.includes(l.id);
+                        return `<span class="section-chip ${inSection ? '' : 'chip-out'}"
+                                      onclick="toggleLoopInSection(${section.id}, ${l.id})">
+                            <span class="chip-dot" style="background:${l.color}"></span>${escapeHtml(l.name)}
                         </span>`;
                       }).join('');
-                return `<div class="section-row${cls}" ondragover="sectionDragOver(event)"
-                            ondragleave="sectionDragLeave(event)" ondrop="sectionDrop(event, ${section.id})">
+                return `<div class="section-row${cls}">
                     <button class="section-launch" onclick="launchSection(${section.id})">▶</button>
                     <span class="section-name" onclick="renameSection(${section.id})">${section.name ? escapeHtml(section.name) : '#' + section.id}</span>
                     <div class="section-loops">${chips}</div>
@@ -807,12 +797,6 @@
                 </div>`;
             }).join('');
 
-            const palette = document.getElementById('sectionPalette');
-            palette.innerHTML = layers.map(l => `
-                <span class="palette-chip" draggable="true"
-                      ondragstart="event.dataTransfer.setData('text/plain', '${l.id}')">
-                    <span class="chip-dot" style="background:${l.color}"></span>${l.name}
-                </span>`).join('');
         }
 
         // =================================================================
