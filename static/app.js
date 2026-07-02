@@ -1992,6 +1992,7 @@
                 sideContent.classList.remove('open');
                 document.querySelectorAll('.side-icon').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.side-panel').forEach(p => p.classList.remove('active'));
+                document.body.classList.remove('mobile-panel');
                 return;
             }
 
@@ -2010,7 +2011,48 @@
             if (name === 'scale') renderFretboard();
             if (name === 'sections') renderSections();
             if (name === 'fx') renderFx();
+            document.body.classList.add('mobile-panel');
         }
+
+        // =================================================================
+        // MOBILE NAVIGATION
+        // =================================================================
+
+        function setMobileTab(name) {
+            const menu = document.getElementById('mobileMoreMenu');
+            if (name === 'more') {                     // toggle the menu sheet
+                menu.classList.toggle('open');
+                return;
+            }
+            menu.classList.remove('open');
+            document.querySelectorAll('.mobile-tab').forEach(b =>
+                b.classList.toggle('active', b.dataset.tab === name));
+            if (document.body.classList.contains('edit-mode')) toggleViewMode();
+            if (name === 'home') {
+                if (activeSidePanel) setSidePanel(activeSidePanel);   // toggles closed
+            } else {                                   // sections | fx | scale
+                if (activeSidePanel !== name) setSidePanel(name);
+            }
+        }
+
+        function mobileMore(entry) {
+            document.getElementById('mobileMoreMenu').classList.remove('open');
+            document.querySelectorAll('.mobile-tab').forEach(b =>
+                b.classList.toggle('active', b.dataset.tab === 'more'));
+            if (entry === 'meters' || entry === 'midi') {
+                if (document.body.classList.contains('edit-mode')) toggleViewMode();
+                if (activeSidePanel !== entry) setSidePanel(entry);
+                return;
+            }
+            // sessions / export live in the edit panels
+            if (activeSidePanel) setSidePanel(activeSidePanel);       // close side panel
+            if (!document.body.classList.contains('edit-mode')) toggleViewMode();
+            const el = document.getElementById(entry === 'sessions' ? 'sessionNameInput' : 'exportBtn');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (entry === 'sessions') document.getElementById('sessionNameInput').focus();
+        }
+
+        function mobileSave() { mobileMore('sessions'); }
 
         // =================================================================
         // INITIALIZATION

@@ -2094,3 +2094,48 @@ body.edit-mode .layer-expanded { display: flex; }
 }
 .section-name:hover { background: rgba(255,255,255,0.08); }
 .layer-name { cursor: pointer; }
+
+/* ═══════════════ MOBILE (≤740px) ═══════════════ */
+.mobile-tabbar, .mobile-more-menu, .btn-save-mobile { display: none; }
+
+@media (max-width: 740px) {
+    /* chrome */
+    .side-strip { display: none; }
+    .mobile-tabbar {
+        display: flex; flex: 0 0 56px;
+        background: var(--surface); border-top: 1px solid var(--border);
+    }
+    .mobile-tab {
+        flex: 1; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 2px; min-height: 44px;
+        background: none; border: none; color: var(--text-muted);
+        font-size: 17px;
+    }
+    .mobile-tab span { font-size: 9px; letter-spacing: 0.08em; }
+    .mobile-tab.active { color: var(--accent); }
+    .mobile-more-menu {
+        position: fixed; bottom: calc(56px + var(--footer-h)); left: 8px; right: 8px;
+        z-index: 60; background: var(--surface); border: 1px solid var(--border);
+        border-radius: 10px; overflow: hidden; flex-direction: column;
+    }
+    .mobile-more-menu.open { display: flex; }
+    .mobile-more-menu button {
+        min-height: 48px; background: none; border: none;
+        border-bottom: 1px solid var(--border); color: var(--text);
+        font-size: 14px; text-align: left; padding: 0 16px;
+    }
+    .btn-save-mobile { display: inline-flex; }
+
+    /* layout: single column; open panel replaces the home column */
+    .app-body { flex-direction: column; }
+    .left-col { width: 100%; border-right: none; flex: 1 1 0; min-height: 0; }
+    .side-wrap { flex: 0 0 0; min-height: 0; }
+    body.mobile-panel .left-col { display: none; }
+    body.mobile-panel .side-wrap { flex: 1 1 0; }
+    .side-content.open { display: flex; }
+    .side-panel { width: 100%; }
+
+    /* edit panels (sessions/export/trim) go fullscreen */
+    body.edit-mode .app-body { display: none; }
+    body.edit-mode .edit-panels { flex: 1 1 0; }
+}

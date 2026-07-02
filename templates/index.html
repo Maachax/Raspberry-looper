@@ -399,8 +399,24 @@
         <button class="btn btn-overdub" id="btnOverdub"
                 onclick="handleOverdub()" disabled>+ OVD</button>
         <button class="btn btn-clear" onclick="handleClear()">✕</button>
+        <button class="btn btn-save-mobile" id="btnSaveMobile" onclick="mobileSave()">SAVE</button>
     </div>
 </footer>
+
+<!-- Mobile bottom tab bar (hidden on desktop) -->
+<div class="mobile-more-menu" id="mobileMoreMenu">
+    <button onclick="mobileMore('sessions')">💾 Sessions</button>
+    <button onclick="mobileMore('export')">⬇ Export</button>
+    <button onclick="mobileMore('meters')">dB Meters / Boost</button>
+    <button onclick="mobileMore('midi')">🎹 MIDI bindings</button>
+</div>
+<nav class="mobile-tabbar" id="mobileTabbar">
+    <button class="mobile-tab active" data-tab="home" onclick="setMobileTab('home')">◉<span>HOME</span></button>
+    <button class="mobile-tab" data-tab="sections" onclick="setMobileTab('sections')">▦<span>SECTIONS</span></button>
+    <button class="mobile-tab" data-tab="fx" onclick="setMobileTab('fx')">≈<span>FX</span></button>
+    <button class="mobile-tab" data-tab="scale" onclick="setMobileTab('scale')">♩<span>SCALE</span></button>
+    <button class="mobile-tab" data-tab="more" onclick="setMobileTab('more')">⋯<span>MORE</span></button>
+</nav>
 
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script src="/static/app.js"></script>
