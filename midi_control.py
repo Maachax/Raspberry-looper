@@ -66,3 +66,89 @@ def save_bindings(bindings, path=None):
         data = {}
     data.setdefault('midi', {})['bindings'] = bindings
     path.write_text(json.dumps(data, indent=2))
+
+
+class MidiController:
+    """Dispatches normalized MIDI triggers to looper actions. One instance,
+    one manager thread (started by start(); tests call handle_trigger directly)."""
+
+    def __init__(self, looper, notify, port_match='MPK mini', _config_path=None):
+        self.looper = looper
+        self.notify = notify
+        self.port_match = port_match
+        self._config_path = _config_path
+        self.bindings = load_bindings(path=_config_path)
+        self.connected = False
+        self.mode = 'play'
+        self.learn = None            # action_id currently being learned
+        self._learn_armed_at = 0.0
+        self._taps = []
+        self._last_notify = 0.0
+        self._port = None
+        self._stop = threading.Event()
+
+    # ------------------------------------------------------------ dispatch
+    def handle_trigger(self, trigger, value):
+        if self.learn is not None:
+            self._bind_learned(trigger)
+            return
+        action = (self.bindings.get('global', {}).get(trigger)
+                  or self.bindings.get(self.mode, {}).get(trigger))
+        if action is None:
+            return
+        self._run_action(action, value)
+        self._notify_debounced()
+
+    def _run_action(self, action, value):
+        if action == 'record_toggle':
+            self._record_toggle()
+        elif action == 'tap_tempo':
+            self._tap()
+        elif action.startswith('launch_section_'):
+            idx = int(action.rsplit('_', 1)[1]) - 1
+            sections = self.looper.sections
+            if idx < len(sections):
+                self.looper.launch_section(sections[idx]['id'])
+        elif action.startswith('loop_volume_'):
+            if value is not None:
+                idx = int(action.rsplit('_', 1)[1]) - 1
+                self.looper.set_layer_volume(idx, value / 127.0)
+
+    def _record_toggle(self):
+        s = self.looper.state.value
+        if s == 'idle':
+            self.looper.start_recording()
+        elif s == 'recording_master':
+            self.looper.stop_recording()
+        elif s == 'playing':
+            self.looper.arm_overdub()
+        elif s == 'overdub_armed':
+            self.looper.cancel_overdub()
+        # recording_overdub: finalizes at loop wrap on its own
+
+    def _tap(self):
+        now = time.monotonic()
+        if self._taps and now - self._taps[-1] > 2.0:
+            self._taps = []
+        self._taps.append(now)
+        if len(self._taps) >= 2:
+            gaps = [b - a for a, b in zip(self._taps, self._taps[1:])]
+            self.looper.set_bpm(60.0 / (sum(gaps) / len(gaps)))
+
+    # ------------------------------------------------------------ UI sync
+    def _notify_debounced(self):
+        """At most ~10 notifies/s; the UI's periodic poll covers the tail."""
+        now = time.monotonic()
+        if now - self._last_notify >= 0.1:
+            self._last_notify = now
+            self.notify()
+
+    # ------------------------------------------------------------ learn (Task 4)
+    def _bind_learned(self, trigger):
+        raise NotImplementedError
+
+    def arm_learn(self, action_id):
+        raise NotImplementedError
+
+    def status(self):
+        raise NotImplementedError
