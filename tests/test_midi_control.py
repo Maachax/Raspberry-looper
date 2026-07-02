@@ -108,6 +108,7 @@ class FakeLooper:
                 self.fx_chain = []
         self.layers = [L(0, 'Master'), L(1, 'Loop 1'), L(2, 'Loop 2')]
         self.active_section_id = None
+        self.master_bus = None
 
     @property
     def state(self):
@@ -563,3 +564,56 @@ def test_fx_keys_noop_with_no_layers(tmp_path):
     ctl.set_mode('fx_edit')
     ctl.handle_trigger('note:0:60', 64)         # must not raise
     assert looper.calls == []
+
+
+from midi_control import scale_param
+
+
+def test_scale_param_numeric_and_enum():
+    num = {'name': 'drive_db', 'min': 0.0, 'max': 40.0, 'default': 18.0}
+    assert scale_param(num, 0) == 0.0
+    assert scale_param(num, 127) == 40.0
+    assert abs(scale_param(num, 64) - 40.0 * 64 / 127) < 1e-9
+    enum = {'name': 'mode', 'options': ['LP', 'HP'], 'default': 'LP'}
+    assert scale_param(enum, 0) == 'LP'
+    assert scale_param(enum, 63) == 'LP'
+    assert scale_param(enum, 64) == 'HP'
+    assert scale_param(enum, 127) == 'HP'
+
+
+def test_fx_param_knob_commits_after_idle_not_per_tick(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.selected_loop = 1
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('note:0:63', 64)          # add distortion (1 bake)
+    bakes = looper.calls.count('set_loop_chain:1')
+    for v in range(10, 120, 10):                 # a knob sweep
+        ctl.handle_trigger('cc:0:70', v)
+    # audio-safety: the sweep itself must not re-bake
+    assert looper.calls.count('set_loop_chain:1') == bakes
+    ctl.flush_params()                           # idle commit (timer fires this in prod)
+    assert looper.calls.count('set_loop_chain:1') == bakes + 1
+    assert abs(looper.layers[1].fx_chain[0]['params']['drive_db']
+               - 40.0 * 110 / 127) < 1e-9
+
+
+def test_fx_param_knob_ignores_missing_param(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.selected_loop = 1
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('note:0:63', 64)          # distortion has 1 param
+    ctl.handle_trigger('cc:0:72', 64)            # fx_param_3 -> no such param
+    ctl.flush_params()
+    assert looper.layers[1].fx_chain[0]['params'] == {'drive_db': 18.0}
+
+
+def test_bus_knobs_apply_immediately_and_autocreate(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    looper.master_bus = None
+    applied = []
+    looper.set_bus = lambda sid, eff: applied.append((sid, eff)) or True
+    ctl.set_mode('fx_edit')
+    ctl.handle_trigger('cc:0:77', 127)           # bus wet full
+    assert applied[-1][0] is None
+    assert applied[-1][1]['type'] == 'reverb'
+    assert applied[-1][1]['params']['wet'] == 1.0

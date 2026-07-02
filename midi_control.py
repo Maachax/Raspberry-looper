@@ -94,6 +94,14 @@ DEFAULT_BINDINGS = {
 }
 
 
+def scale_param(param, cc_value):
+    """Map a 0-127 CC value into a schema param's range (numeric or enum)."""
+    if 'options' in param:
+        options = param['options']
+        return options[min(len(options) - 1, cc_value * len(options) // 128)]
+    return param['min'] + (param['max'] - param['min']) * cc_value / 127.0
+
+
 def load_bindings(path=None):
     """Saved bindings from config if valid, else a deep copy of defaults."""
     path = path or CONFIG_PATH
@@ -143,6 +151,8 @@ class MidiController:
         self.selected_fx_slot = 0
         self.editing_section = None  # section id being edited in section_edit
         self._confirm = None         # (action_id, armed_at) double-tap state
+        self._param_pending = None   # (loop_idx, chain) awaiting idle commit
+        self._param_timer = None
         self._last_notify = 0.0
         self._port = None
         self._stop = threading.Event()
@@ -158,6 +168,7 @@ class MidiController:
         return self.selected_loop
 
     def set_mode(self, mode):
+        self.flush_params()
         self.mode = mode
         if mode == 'section_edit':
             self.editing_section = self.looper.active_section_id
@@ -172,6 +183,46 @@ class MidiController:
         if idx is None:
             return None, None
         return idx, copy.deepcopy(self.looper.layers[idx].fx_chain)
+
+    # ------------------------------------------------------------ fx knobs
+    def _edit_param(self, param_index, cc_value):
+        """Buffer a param edit; commit after 0.3s idle (set_loop_chain re-bakes
+        under looper.lock, so it must never run per CC tick)."""
+        if self._param_pending is None:
+            idx, chain = self._fx_chain()
+            if idx is None or self.selected_fx_slot >= len(chain):
+                return
+            self._param_pending = (idx, chain)
+        idx, chain = self._param_pending
+        if self.selected_fx_slot >= len(chain):
+            return
+        effect = chain[self.selected_fx_slot]
+        schema = EFFECT_SCHEMAS.get(effect['type'], [])
+        if param_index >= len(schema):
+            return
+        param = schema[param_index]
+        effect['params'][param['name']] = scale_param(param, cc_value)
+        if self._param_timer is not None:
+            self._param_timer.cancel()
+        self._param_timer = threading.Timer(0.3, self.flush_params)
+        self._param_timer.daemon = True
+        self._param_timer.start()
+
+    def flush_params(self):
+        """Commit the buffered param edit (one bake), if any."""
+        if self._param_timer is not None:
+            self._param_timer.cancel()
+            self._param_timer = None
+        if self._param_pending is not None:
+            idx, chain = self._param_pending
+            self._param_pending = None
+            self.looper.set_loop_chain(idx, chain)
+            self._notify_debounced()
+
+    def _edit_bus(self, param_name, cc_value):
+        effect = copy.deepcopy(self.looper.master_bus) or default_effect('reverb')
+        effect['params'][param_name] = cc_value / 127.0
+        self.looper.set_bus(None, effect)
 
     # ------------------------------------------------------------ dispatch
     def handle_trigger(self, trigger, value):
@@ -298,6 +349,18 @@ class MidiController:
             self.looper.set_loop_chain(idx, chain)
             self.selected_fx_slot = max(0, min(self.selected_fx_slot,
                                                len(chain) - 1))
+            return
+        if action.startswith('fx_param_'):
+            if value is not None:
+                self._edit_param(int(action.rsplit('_', 1)[1]) - 1, value)
+            return
+        if action == 'bus_room':
+            if value is not None:
+                self._edit_bus('room_size', value)
+            return
+        if action == 'bus_wet':
+            if value is not None:
+                self._edit_bus('wet', value)
             return
         if action == 'record_toggle':
             self._record_toggle()
