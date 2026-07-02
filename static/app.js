@@ -806,6 +806,7 @@
         let fxScopeSection = false;  // false = loop default, true = active section override
         let fxActiveIdx = 0;     // selected effect index in the chain
         let _lastFxJson = '';    // dirty-check so polls don't clobber sliders mid-drag
+        let _fxDragging = false; // true while a knob is being turned (suspends poll re-render)
 
         function fxActiveSection() {
             const sid = serverState.sections?.active_id;
@@ -861,10 +862,101 @@
             const params = Object.fromEntries((serverState.fx?.schemas?.reverb || []).map(p => [p.name, p.default]));
             sendCommand('fx_set_bus', { section_id: null, effect: { type: 'reverb', params, enabled: true } });
         }
+        function fxToggleEffect(idx) {
+            const c = fxCurrentChain().map(e => ({ ...e, params: { ...e.params } }));
+            if (!c[idx]) return;
+            c[idx].enabled = c[idx].enabled === false; // flip; default (undefined) counts as on
+            fxCommitChain(c);
+        }
+
+        // --- Rotary knob widget (SVG, no dependencies) -------------------
+        // 270° sweep, from 135° (7 o'clock) clockwise to 405° (4:30).
+        function fxPolar(cx, cy, r, deg) {
+            const a = deg * Math.PI / 180;
+            return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+        }
+        function fxArcPath(cx, cy, r, a0, a1) {
+            const p0 = fxPolar(cx, cy, r, a0), p1 = fxPolar(cx, cy, r, a1);
+            const large = (a1 - a0) > 180 ? 1 : 0;
+            return `M ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`;
+        }
+        function fxPaintPot(el, t) {
+            t = Math.max(0, Math.min(1, t));
+            const a1 = 135 + t * 270;
+            el.querySelector('.pot-fill').setAttribute('d', t > 0.002 ? fxArcPath(20, 20, 15, 135, a1) : '');
+            const ic = fxPolar(20, 20, 6, a1), ip = fxPolar(20, 20, 15, a1);
+            const ind = el.querySelector('.pot-ind');
+            ind.setAttribute('x1', ic.x.toFixed(2)); ind.setAttribute('y1', ic.y.toFixed(2));
+            ind.setAttribute('x2', ip.x.toFixed(2)); ind.setAttribute('y2', ip.y.toFixed(2));
+        }
+        function fxPotHtml(o) {
+            const span = (o.max - o.min) || 1;
+            const t = Math.max(0, Math.min(1, (o.value - o.min) / span));
+            const a1 = 135 + t * 270;
+            const ic = fxPolar(20, 20, 6, a1), ip = fxPolar(20, 20, 15, a1);
+            return `<div class="fx-pot" data-name="${o.name}" data-min="${o.min}" data-max="${o.max}"
+                  data-default="${o.def}" data-value="${o.value}" data-idx="${o.idx}" data-bus="${o.bus ? 1 : 0}"
+                  title="drag up/down · shift = fine · double-click = reset">
+                <div class="pot-label">${o.name}</div>
+                <svg viewBox="0 0 40 40">
+                  <path class="pot-track" d="${fxArcPath(20, 20, 15, 135, 405)}"/>
+                  <path class="pot-fill" d="${t > 0.002 ? fxArcPath(20, 20, 15, 135, a1) : ''}"/>
+                  <line class="pot-ind" x1="${ic.x.toFixed(2)}" y1="${ic.y.toFixed(2)}" x2="${ip.x.toFixed(2)}" y2="${ip.y.toFixed(2)}"/>
+                </svg>
+                <div class="pot-val">${(+o.value).toFixed(2)}</div>
+              </div>`;
+        }
+        function fxParamCtl(p, value, idx, bus) {
+            if (p.options) {
+                const set = bus ? `fxSetBusParam('${p.name}',this.value)` : `fxSetParam(${idx},'${p.name}',this.value)`;
+                return `<div class="fx-sel"><div class="pot-label">${p.name}</div>
+                    <select onchange="${set}">${p.options.map(o => `<option ${o === value ? 'selected' : ''}>${o}</option>`).join('')}</select></div>`;
+            }
+            return fxPotHtml({ name: p.name, value, min: p.min, max: p.max, def: p.default, idx, bus });
+        }
+        function fxCommitPot(el, v) {
+            const name = el.dataset.name;
+            if (el.dataset.bus === '1') fxSetBusParam(name, v);
+            else fxSetParam(parseInt(el.dataset.idx, 10), name, v);
+        }
+        function fxPotDown(ev) {
+            const el = ev.target.closest('.fx-pot');
+            if (!el) return;
+            ev.preventDefault();
+            _fxDragging = true;
+            const min = parseFloat(el.dataset.min), max = parseFloat(el.dataset.max);
+            const span = (max - min) || 1;
+            const start = parseFloat(el.dataset.value);
+            const startY = ev.clientY;
+            const valEl = el.querySelector('.pot-val');
+            let cur = start;
+            function move(e) {
+                const sens = (e.shiftKey ? 0.25 : 1) * span / 150; // units per px
+                cur = Math.max(min, Math.min(max, start + (startY - e.clientY) * sens));
+                fxPaintPot(el, (cur - min) / span);
+                valEl.textContent = cur.toFixed(2);
+            }
+            function up() {
+                document.removeEventListener('pointermove', move);
+                document.removeEventListener('pointerup', up);
+                _fxDragging = false;
+                fxCommitPot(el, cur);
+            }
+            document.addEventListener('pointermove', move);
+            document.addEventListener('pointerup', up);
+        }
+        function fxPotDbl(ev) {
+            const el = ev.target.closest('.fx-pot');
+            if (!el) return;
+            fxCommitPot(el, parseFloat(el.dataset.default));
+        }
+        document.addEventListener('pointerdown', fxPotDown);
+        document.addEventListener('dblclick', fxPotDbl);
 
         function renderFx() {
             const panel = document.getElementById('panelFx');
             if (!panel || !panel.classList.contains('active')) return;
+            if (_fxDragging) return; // don't rebuild a knob out from under an active drag
             const layers = serverState.layers || [];
             if (!layers.some(l => l.id === fxLoopId)) fxLoopId = layers.length ? layers[0].id : 0;
             const schemas = serverState.fx?.schemas || {};
@@ -893,9 +985,10 @@
             const chain = fxCurrentChain();
             if (fxActiveIdx >= chain.length) fxActiveIdx = Math.max(0, chain.length - 1);
             document.getElementById('fxChain').innerHTML = chain.map((e, i) => `
-                <span class="fx-chip ${i === fxActiveIdx ? 'active' : ''}" onclick="fxActiveIdx=${i};renderFx()">
-                    <span onclick="event.stopPropagation();fxMoveEffect(${i},-1)">‹</span>${e.type}
-                    <span onclick="event.stopPropagation();fxMoveEffect(${i},1)">›</span>
+                <span class="fx-chip ${i === fxActiveIdx ? 'active' : ''} ${e.enabled === false ? 'disabled' : ''}" onclick="fxActiveIdx=${i};renderFx()">
+                    <span class="fx-power" onclick="event.stopPropagation();fxToggleEffect(${i})" title="enable / disable">${e.enabled === false ? '○' : '●'}</span>
+                    <span class="fx-mv" onclick="event.stopPropagation();fxMoveEffect(${i},-1)">‹</span>${e.type}
+                    <span class="fx-mv" onclick="event.stopPropagation();fxMoveEffect(${i},1)">›</span>
                     <span class="fx-x" onclick="event.stopPropagation();fxRemoveEffect(${i})">✕</span>
                 </span>`).join('') +
                 `<select class="fx-add" onchange="fxAddEffect(this.value);this.selectedIndex=0">
@@ -904,35 +997,16 @@
                  </select>`;
 
             const sel = chain[fxActiveIdx];
-            document.getElementById('fxParams').innerHTML = (sel && schemas[sel.type]) ? schemas[sel.type].map(p => {
-                const v = sel.params[p.name];
-                if (p.options) {
-                    return `<div class="fx-knob"><label>${p.name}</label>
-                        <select onchange="fxSetParam(${fxActiveIdx},'${p.name}',this.value)">
-                          ${p.options.map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}
-                        </select></div>`;
-                }
-                return `<div class="fx-knob"><label>${p.name}</label>
-                    <input type="range" min="${p.min}" max="${p.max}" step="${(p.max - p.min) / 100}" value="${v}"
-                           oninput="this.nextElementSibling.textContent=(+this.value).toFixed(2)"
-                           onchange="fxSetParam(${fxActiveIdx},'${p.name}',parseFloat(this.value))">
-                    <span class="fx-val">${(+v).toFixed(2)}</span></div>`;
-            }).join('') : '<div style="font-size:10px;color:var(--text-muted)">No effect selected</div>';
+            document.getElementById('fxParams').innerHTML = (sel && schemas[sel.type])
+                ? schemas[sel.type].map(p => fxParamCtl(p, sel.params[p.name], fxActiveIdx, false)).join('')
+                : '<div style="font-size:10px;color:var(--text-muted)">No effect selected</div>';
 
             const bus = serverState.fx?.master_bus;
             const busOn = !!bus;
             const rp = (schemas.reverb || []);
             document.getElementById('fxBus').innerHTML =
-                `<div class="fx-knob"><label>enabled</label>
-                   <input type="checkbox" ${busOn ? 'checked' : ''} onchange="fxToggleBus(this.checked)"></div>` +
-                (busOn ? rp.map(p => {
-                    const v = bus.params[p.name];
-                    return `<div class="fx-knob"><label>${p.name}</label>
-                        <input type="range" min="${p.min}" max="${p.max}" step="${(p.max - p.min) / 100}" value="${v}"
-                               oninput="this.nextElementSibling.textContent=(+this.value).toFixed(2)"
-                               onchange="fxSetBusParam('${p.name}',parseFloat(this.value))">
-                        <span class="fx-val">${(+v).toFixed(2)}</span></div>`;
-                }).join('') : '');
+                `<label class="fx-bus-toggle"><input type="checkbox" ${busOn ? 'checked' : ''} onchange="fxToggleBus(this.checked)"> enabled</label>` +
+                (busOn ? `<div class="fx-params">${rp.map(p => fxParamCtl(p, bus.params[p.name], 0, true)).join('')}</div>` : '');
         }
 
         // =================================================================
