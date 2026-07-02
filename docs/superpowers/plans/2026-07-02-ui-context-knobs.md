@@ -35,7 +35,7 @@
   - `status()` gains `ui_context` (str) and `trim_preview` (`{'start','end'}` or None).
   - Socket command `ui_context {context, fx_loop, fx_slot}`.
 
-- [ ] **Step 1: Failing tests** — append to `tests/test_midi_control.py`; add to `FakeLooper.__init__`: `self.master_length = 44100 * 4` and `self.trims = []`; add method `def apply_trim(self, s, e): self.trims.append((s, e))`.
+- [x] **Step 1: Failing tests** — append to `tests/test_midi_control.py`; add to `FakeLooper.__init__`: `self.master_length = 44100 * 4` and `self.trims = []`; add method `def apply_trim(self, s, e): self.trims.append((s, e))`.
 
 ```python
 def test_ui_context_normalization(tmp_path):
@@ -98,9 +98,9 @@ def test_leaving_trim_context_clears_preview(tmp_path):
     assert looper.volumes[0] == 1.0
 ```
 
-- [ ] **Step 2: Verify fail** — `./bin/python -m pytest tests/test_midi_control.py -q` → new tests FAIL (`AttributeError: set_ui_context`).
+- [x] **Step 2: Verify fail** — `./bin/python -m pytest tests/test_midi_control.py -q` → new tests FAIL (`AttributeError: set_ui_context`).
 
-- [ ] **Step 3: Implement** in `midi_control.py`:
+- [x] **Step 3: Implement** in `midi_control.py`:
 
 Top imports: `from config import CONFIG_PATH, SAMPLE_RATE`.
 
@@ -229,8 +229,8 @@ New methods:
             midi.set_ui_context(data)
 ```
 
-- [ ] **Step 4:** `./bin/python -m pytest tests/ -q` → 117 passed.
-- [ ] **Step 5:** Commit `feat(midi): screen-driven knob layers — ui context, fx targeting, trim preview`.
+- [x] **Step 4:** `./bin/python -m pytest tests/ -q` → 117 passed.
+- [x] **Step 5:** Commit `feat(midi): screen-driven knob layers — ui context, fx targeting, trim preview`.
 
 ---
 
@@ -242,7 +242,7 @@ New methods:
 **Interfaces:**
 - Consumes: `serverState.midi.ui_context`, `.trim_preview`; client vars `activeSidePanel`, `trimEditorExpanded`, `fxLoopId`, `fxActiveIdx`.
 
-- [ ] **Step 1: reportUiContext** — add near the mobile navigation block:
+- [x] **Step 1: reportUiContext** — add near the mobile navigation block:
 
 ```javascript
         let _lastUiContext = '';
@@ -262,7 +262,7 @@ New methods:
 
 Call `reportUiContext();` at the end of: `setSidePanel` (both branches, after the class sync lines), `toggleViewMode`, `toggleTrimEditor`, and `renderFx` (covers chip clicks and loop-select changes; the change-guard makes repeat calls free).
 
-- [ ] **Step 2: Trim handles follow the preview** — in the update handler after `renderMidiBanner();`, add `applyTrimPreviewFromMidi();`, implemented next to the trim editor code (find the client's trim variables — `trimStart`/`trimEnd` in seconds and its redraw function — and set them from the ratios):
+- [x] **Step 2: Trim handles follow the preview** — in the update handler after `renderMidiBanner();`, add `applyTrimPreviewFromMidi();`, implemented next to the trim editor code (find the client's trim variables — `trimStart`/`trimEnd` in seconds and its redraw function — and set them from the ratios):
 
 ```javascript
         function applyTrimPreviewFromMidi() {
@@ -278,7 +278,7 @@ Call `reportUiContext();` at the end of: `setSidePanel` (both branches, after th
 
 (If the redraw function is named differently — check `toggleTrimEditor`'s body — use that name; it must reposition handles/overlays from `trimStart`/`trimEnd`.)
 
-- [ ] **Step 3: Knob banner** — in `renderMidiBanner`, the `play` branch currently hides the banner; replace that branch:
+- [x] **Step 3: Knob banner** — in `renderMidiBanner`, the `play` branch currently hides the banner; replace that branch:
 
 ```javascript
             if (midi.mode === 'play') {
@@ -296,7 +296,7 @@ Call `reportUiContext();` at the end of: `setSidePanel` (both branches, after th
 
 CSS: `.midi-mode-banner.banner-knobs { background: #4fd1c5; color: #1a1a1a; }`
 
-- [ ] **Step 4:** `node --check static/app.js` → OK; suite still 117; commit `feat(ui): report ui context; trim handles + banner follow MPK knobs`.
+- [x] **Step 4:** `node --check static/app.js` → OK; suite still 117; commit `feat(ui): report ui context; trim handles + banner follow MPK knobs`.
 
 ---
 
