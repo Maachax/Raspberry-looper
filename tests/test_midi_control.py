@@ -109,6 +109,8 @@ class FakeLooper:
         self.layers = [L(0, 'Master'), L(1, 'Loop 1'), L(2, 'Loop 2')]
         self.active_section_id = None
         self.master_bus = None
+        self.master_length = 44100 * 4
+        self.trims = []
 
     @property
     def state(self):
@@ -151,6 +153,9 @@ class FakeLooper:
             return False
         del self.layers[idx]
         return True
+
+    def apply_trim(self, s, e):
+        self.trims.append((s, e))
 
     def set_loop_chain(self, idx, chain):
         self.layers[idx].fx_chain = chain
@@ -302,7 +307,8 @@ def test_get_state_has_midi_block(tmp_path):
     assert state['midi'] == {'connected': False, 'mode': 'play',
                              'learn': None, 'actions': [],
                              'selected_loop': None, 'selected_fx_slot': 0,
-                             'editing_section': None, 'confirm': None}
+                             'editing_section': None, 'confirm': None,
+                             'ui_context': 'home', 'trim_preview': None}
     ctl = MidiController(looper, notify=lambda: None,
                          _config_path=tmp_path / '_config.json')
     looper.midi_status = ctl.status
@@ -617,3 +623,63 @@ def test_bus_knobs_apply_immediately_and_autocreate(tmp_path):
     assert applied[-1][0] is None
     assert applied[-1][1]['type'] == 'reverb'
     assert applied[-1][1]['params']['wet'] == 1.0
+
+
+def test_ui_context_normalization(tmp_path):
+    _, ctl, _ = make_controller(tmp_path)
+    ctl.set_ui_context({'context': 'fx', 'fx_loop': 1, 'fx_slot': 0})
+    assert ctl.status()['ui_context'] == 'fx'
+    ctl.set_ui_context({'context': 'warp'})
+    assert ctl.status()['ui_context'] == 'home'
+
+
+def test_fx_context_knobs_edit_screen_target_not_volumes(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    looper.layers[1].fx_chain = [{'type': 'distortion',
+                                  'params': {'drive_db': 18.0}, 'enabled': True}]
+    ctl.set_ui_context({'context': 'fx', 'fx_loop': 1, 'fx_slot': 0})
+    ctl.handle_trigger('cc:0:70', 127)      # K1 -> param, NOT loop 1 volume
+    ctl.handle_trigger('cc:0:73', 64)       # K4 -> swallowed, NOT loop 4 volume
+    assert looper.volumes == {}
+    ctl.flush_params()
+    assert looper.layers[1].fx_chain[0]['params']['drive_db'] == 40.0
+
+
+def test_explicit_mode_overrides_context(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    looper.layers[2].fx_chain = [{'type': 'distortion',
+                                  'params': {'drive_db': 18.0}, 'enabled': True}]
+    ctl.set_ui_context({'context': 'fx', 'fx_loop': 1, 'fx_slot': 0})
+    ctl.selected_loop = 2
+    ctl.set_mode('fx_edit')                 # explicit mode wins over context
+    ctl.handle_trigger('cc:0:70', 0)
+    ctl.flush_params()
+    assert looper.layers[2].fx_chain[0]['params']['drive_db'] == 0.0
+    assert looper.layers[1].fx_chain == []
+
+
+def test_trim_context_knobs_and_apply(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.set_ui_context({'context': 'trim'})
+    ctl.handle_trigger('cc:0:70', 0)        # start -> 0.0
+    ctl.handle_trigger('cc:0:71', 64)       # end -> 64/127
+    tp = ctl.status()['trim_preview']
+    assert tp['start'] == 0.0 and abs(tp['end'] - 64 / 127) < 1e-9
+    ctl.handle_trigger('cc:0:70', 127)      # start clamps below end
+    assert ctl.trim_preview['start'] == ctl.trim_preview['end'] - 0.02
+    ctl.handle_trigger('note:0:69', 64)     # A key applies
+    s, e = looper.trims[-1]
+    assert abs(e - (64 / 127) * 4.0) < 1e-6
+    assert ctl.trim_preview is None
+
+
+def test_leaving_trim_context_clears_preview(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.set_ui_context({'context': 'trim'})
+    ctl.handle_trigger('cc:0:70', 30)
+    ctl.set_ui_context({'context': 'home'})
+    assert ctl.trim_preview is None
+    ctl.handle_trigger('note:0:69', 64)     # apply outside context: no-op
+    assert looper.trims == []
+    ctl.handle_trigger('cc:0:70', 127)      # knobs are volumes again
+    assert looper.volumes[0] == 1.0

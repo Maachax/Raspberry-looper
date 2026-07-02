@@ -214,6 +214,9 @@ def handle_command(data):
     elif command == 'midi_learn':
         if midi is not None:
             midi.arm_learn(data.get('action', ''))
+    elif command == 'ui_context':
+        if midi is not None:
+            midi.set_ui_context(data)
     elif command == 'set_beats_per_bar':
         looper.set_beats_per_bar(data.get('beats', 4))
     elif command == 'set_quantize':

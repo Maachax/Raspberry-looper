@@ -1627,7 +1627,8 @@ class WebLooper:
             'midi': (self.midi_status() if self.midi_status else
                      {'connected': False, 'mode': 'play', 'learn': None, 'actions': [],
                       'selected_loop': None, 'selected_fx_slot': 0,
-                      'editing_section': None, 'confirm': None}),
+                      'editing_section': None, 'confirm': None,
+                      'ui_context': 'home', 'trim_preview': None}),
             'state': state,
             'master_duration': master_duration,
             'master_volume': master_volume,

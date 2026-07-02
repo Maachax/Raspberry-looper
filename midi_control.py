@@ -4,7 +4,7 @@ import json
 import threading
 import time
 
-from config import CONFIG_PATH
+from config import CONFIG_PATH, SAMPLE_RATE
 from effects import default_effect, EFFECT_SCHEMAS
 
 
@@ -153,6 +153,10 @@ class MidiController:
         self._confirm = None         # (action_id, armed_at) double-tap state
         self._param_pending = None   # (loop_idx, chain) awaiting idle commit
         self._param_timer = None
+        self.ui_context = 'home'     # what the browser is showing
+        self.ui_fx_loop = None
+        self.ui_fx_slot = 0
+        self.trim_preview = None     # {'start': r, 'end': r} ratios, or None
         self._last_notify = 0.0
         self._port = None
         self._stop = threading.Event()
@@ -184,19 +188,78 @@ class MidiController:
             return None, None
         return idx, copy.deepcopy(self.looper.layers[idx].fx_chain)
 
+    # ------------------------------------------------------------ ui context
+    def set_ui_context(self, data):
+        ctx = data.get('context')
+        if ctx not in ('home', 'fx', 'trim'):
+            ctx = 'home'
+        if ctx != 'trim':
+            self.trim_preview = None
+        self.ui_context = ctx
+        self.ui_fx_loop = data.get('fx_loop')
+        self.ui_fx_slot = data.get('fx_slot') or 0
+        self.notify()
+
+    _KNOB_CCS = {f'cc:0:{70 + i}' for i in range(8)}
+
+    def _handle_context_trigger(self, trigger, value):
+        """Screen-driven knob layer (PLAY mode only). True = consumed."""
+        if trigger in self._KNOB_CCS:
+            if value is None:
+                return True
+            k = int(trigger.rsplit(':', 1)[1]) - 70          # knob 0..7
+            if self.ui_context == 'fx':
+                if k <= 2 and self.ui_fx_loop is not None:
+                    self._edit_param(k, value, loop_idx=self.ui_fx_loop,
+                                     slot=self.ui_fx_slot)
+                elif k == 6:
+                    self._edit_bus('room_size', value)
+                elif k == 7:
+                    self._edit_bus('wet', value)
+            elif self.ui_context == 'trim' and k in (0, 1):
+                self._edit_trim(k, value)
+            return True                     # knobs never fall through
+        if self.ui_context == 'trim' and trigger == 'note:0:69':
+            self._apply_trim_preview()
+            return True
+        return False
+
+    def _edit_trim(self, knob, value):
+        if self.trim_preview is None:
+            self.trim_preview = {'start': 0.0, 'end': 1.0}
+        r = value / 127.0
+        if knob == 0:
+            self.trim_preview['start'] = min(r, self.trim_preview['end'] - 0.02)
+        else:
+            self.trim_preview['end'] = max(r, self.trim_preview['start'] + 0.02)
+
+    def _apply_trim_preview(self):
+        if self.trim_preview is None or not getattr(self.looper, 'master_length', 0):
+            return
+        duration = self.looper.master_length / SAMPLE_RATE
+        self.looper.apply_trim(self.trim_preview['start'] * duration,
+                               self.trim_preview['end'] * duration)
+        self.trim_preview = None
+
     # ------------------------------------------------------------ fx knobs
-    def _edit_param(self, param_index, cc_value):
+    def _edit_param(self, param_index, cc_value, loop_idx=None, slot=None):
         """Buffer a param edit; commit after 0.3s idle (set_loop_chain re-bakes
         under looper.lock, so it must never run per CC tick)."""
+        if slot is None:
+            slot = self.selected_fx_slot
         if self._param_pending is None:
-            idx, chain = self._fx_chain()
-            if idx is None or self.selected_fx_slot >= len(chain):
+            if loop_idx is None:
+                loop_idx = self.effective_loop()
+            if loop_idx is None or not (0 <= loop_idx < len(self.looper.layers)):
                 return
-            self._param_pending = (idx, chain)
+            chain = copy.deepcopy(self.looper.layers[loop_idx].fx_chain)
+            if slot >= len(chain):
+                return
+            self._param_pending = (loop_idx, chain)
         idx, chain = self._param_pending
-        if self.selected_fx_slot >= len(chain):
+        if slot >= len(chain):
             return
-        effect = chain[self.selected_fx_slot]
+        effect = chain[slot]
         schema = EFFECT_SCHEMAS.get(effect['type'], [])
         if param_index >= len(schema):
             return
@@ -229,6 +292,10 @@ class MidiController:
         if self.learn is not None:
             self._bind_learned(trigger)
             return
+        if self.mode == 'play' and self.ui_context != 'home':
+            if self._handle_context_trigger(trigger, value):
+                self._notify_debounced()
+                return
         action = self.bindings.get('global', {}).get(trigger)
         if action is None:
             action = self.bindings.get(self.mode, {}).get(trigger)
@@ -443,6 +510,8 @@ class MidiController:
             'selected_fx_slot': self.selected_fx_slot,
             'editing_section': self.editing_section,
             'confirm': self._confirm[0] if self._confirm else None,
+            'ui_context': self.ui_context,
+            'trim_preview': self.trim_preview,
             'actions': [{'id': a, 'label': label, 'trigger': trigger_of.get(a)}
                         for a, (_mode, label) in ACTIONS.items()],
         }
