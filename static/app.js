@@ -715,11 +715,24 @@
             }
         }
 
-        function renameLayer(layerId, currentName) {
-            const name = prompt('Rename layer:', currentName);
-            if (name !== null && name.trim() !== '') {
-                sendCommand('rename_layer', { layer_id: layerId, name: name.trim() });
-            }
+        function renameLayer(layerId) {
+            const layer = (serverState.layers || []).find(l => l.id === layerId);
+            const name = prompt('Loop name:', layer?.name || '');
+            if (name === null || !name.trim()) return;
+            sendCommand('rename_layer', { layer_id: layerId, name: name.trim() });
+        }
+
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function renameSection(sectionId) {
+            const sec = (serverState.sections?.list || []).find(s => s.id === sectionId);
+            const name = prompt('Section name:', sec?.name || '');
+            if (name === null) return;
+            sendCommand('rename_section', { section_id: sectionId, name });
         }
 
         function setLayerColor(layerId, color) {
@@ -788,6 +801,7 @@
                 return `<div class="section-row${cls}" ondragover="sectionDragOver(event)"
                             ondragleave="sectionDragLeave(event)" ondrop="sectionDrop(event, ${section.id})">
                     <button class="section-launch" onclick="launchSection(${section.id})">▶</button>
+                    <span class="section-name" onclick="renameSection(${section.id})">${section.name ? escapeHtml(section.name) : '#' + section.id}</span>
                     <div class="section-loops">${chips}</div>
                     <button class="section-delete" onclick="deleteSection(${section.id})">✕</button>
                 </div>`;
@@ -1829,7 +1843,7 @@
                         <div class="layer-row ${layer.is_playing ? '' : 'muted'} ${serverState.midi && serverState.midi.mode !== 'play' && serverState.midi.selected_loop === layer.id ? 'midi-selected' : ''}"
                              style="border-left-color: ${layer.color}"
                              onclick="document.body.classList.contains('edit-mode') && toggleLayer(${layer.id})">
-                            <span class="layer-name" style="color: ${layer.color}">${layer.name}</span>
+                            <span class="layer-name" style="color: ${layer.color}" onclick="event.stopPropagation(); renameLayer(${layer.id})">${escapeHtml(layer.name)}</span>
                             ${trimBtn}
                             <div class="layer-vol-bar-bg">
                                 <div class="layer-vol-bar" style="width:${vol}%; background:${layer.color}"></div>
