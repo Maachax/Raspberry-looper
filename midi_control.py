@@ -83,9 +83,31 @@ class MidiController:
         self.learn = None            # action_id currently being learned
         self._learn_armed_at = 0.0
         self._taps = []
+        self.selected_loop = None    # loop index cursor; None = follow last
+        self.selected_fx_slot = 0
+        self.editing_section = None  # section id being edited in section_edit
+        self._confirm = None         # (action_id, armed_at) double-tap state
         self._last_notify = 0.0
         self._port = None
         self._stop = threading.Event()
+
+    # ------------------------------------------------------------ selection
+    def effective_loop(self):
+        """Selected loop index; defaults to the most recent layer."""
+        n = len(self.looper.layers)
+        if n == 0:
+            return None
+        if self.selected_loop is None or not (0 <= self.selected_loop < n):
+            return n - 1
+        return self.selected_loop
+
+    def set_mode(self, mode):
+        self.mode = mode
+        if mode == 'section_edit':
+            self.editing_section = self.looper.active_section_id
+        elif mode == 'fx_edit':
+            self.selected_fx_slot = 0
+        self.notify()
 
     # ------------------------------------------------------------ dispatch
     def handle_trigger(self, trigger, value):
@@ -177,6 +199,10 @@ class MidiController:
             'connected': self.connected,
             'mode': self.mode,
             'learn': self.learn,
+            'selected_loop': self.effective_loop(),
+            'selected_fx_slot': self.selected_fx_slot,
+            'editing_section': self.editing_section,
+            'confirm': self._confirm[0] if self._confirm else None,
             'actions': [{'id': a, 'label': label, 'trigger': trigger_of.get(a)}
                         for a, (_mode, label) in ACTIONS.items()],
         }

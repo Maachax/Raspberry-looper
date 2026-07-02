@@ -94,12 +94,20 @@ from midi_control import MidiController
 
 class FakeLooper:
     def __init__(self):
-        self.sections = [{'id': 11}, {'id': 22}]
+        self.sections = [{'id': 11, 'loop_ids': []}, {'id': 22, 'loop_ids': []}]
         self.launched = []
         self.volumes = {}
         self.bpms = []
         self.calls = []
         self._state_value = 'idle'
+
+        class L:
+            def __init__(self, i, name):
+                self.id, self.name = i, name
+                self.is_playing = True
+                self.fx_chain = []
+        self.layers = [L(0, 'Master'), L(1, 'Loop 1'), L(2, 'Loop 2')]
+        self.active_section_id = None
 
     @property
     def state(self):
@@ -263,9 +271,44 @@ def test_get_state_has_midi_block(tmp_path):
     looper = WebLooper()
     state = looper.get_state()
     assert state['midi'] == {'connected': False, 'mode': 'play',
-                             'learn': None, 'actions': []}
+                             'learn': None, 'actions': [],
+                             'selected_loop': None, 'selected_fx_slot': 0,
+                             'editing_section': None, 'confirm': None}
     ctl = MidiController(looper, notify=lambda: None,
                          _config_path=tmp_path / '_config.json')
     looper.midi_status = ctl.status
     assert looper.get_state()['midi']['mode'] == 'play'
     assert looper.get_state()['midi']['actions']  # real action list now
+
+
+def test_effective_loop_defaults_to_last(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    assert ctl.effective_loop() == 2          # last of 3 layers
+    ctl.selected_loop = 1
+    assert ctl.effective_loop() == 1
+    ctl.selected_loop = 99                     # stale selection
+    assert ctl.effective_loop() == 2
+    looper.layers.clear()
+    assert ctl.effective_loop() is None
+
+
+def test_set_mode_transitions(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    looper.active_section_id = 22
+    ctl.set_mode('section_edit')
+    assert ctl.mode == 'section_edit'
+    assert ctl.editing_section == 22           # seeded from active section
+    ctl.set_mode('fx_edit')                    # entering one exits the other
+    assert ctl.mode == 'fx_edit'
+    assert ctl.selected_fx_slot == 0
+    ctl.set_mode('play')
+    assert ctl.mode == 'play'
+
+
+def test_status_has_phase2_keys(tmp_path):
+    _, ctl, _ = make_controller(tmp_path)
+    st = ctl.status()
+    assert st['selected_loop'] == 2            # effective
+    assert st['selected_fx_slot'] == 0
+    assert st['editing_section'] is None
+    assert st['confirm'] is None
