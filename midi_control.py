@@ -143,12 +143,40 @@ class MidiController:
             self._last_notify = now
             self.notify()
 
-    # ------------------------------------------------------------ learn (Task 4)
-    def _bind_learned(self, trigger):
-        raise NotImplementedError
-
+    # ------------------------------------------------------------ learn
     def arm_learn(self, action_id):
-        raise NotImplementedError
+        if action_id not in ACTIONS:
+            return
+        self.learn = action_id
+        self._learn_armed_at = time.monotonic()
+        self.notify()
 
+    def _bind_learned(self, trigger):
+        action = self.learn
+        mode = ACTIONS[action][0]
+        mode_map = self.bindings.setdefault(mode, {})
+        for t in [t for t, a in mode_map.items() if a == action]:
+            del mode_map[t]
+        mode_map[trigger] = action
+        save_bindings(self.bindings, path=self._config_path)
+        self.learn = None
+        self.notify()
+
+    def check_learn_timeout(self):
+        if self.learn is not None and time.monotonic() - self._learn_armed_at > 10.0:
+            self.learn = None
+            self.notify()
+
+    # ------------------------------------------------------------ status
     def status(self):
-        raise NotImplementedError
+        trigger_of = {}
+        for mode_map in self.bindings.values():
+            for trig, act in mode_map.items():
+                trigger_of[act] = trig
+        return {
+            'connected': self.connected,
+            'mode': self.mode,
+            'learn': self.learn,
+            'actions': [{'id': a, 'label': label, 'trigger': trigger_of.get(a)}
+                        for a, (_mode, label) in ACTIONS.items()],
+        }

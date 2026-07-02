@@ -197,3 +197,45 @@ def test_actions_notify_ui(tmp_path):
     looper, ctl, notes = make_controller(tmp_path)
     ctl.handle_trigger('pc:9:4', None)
     assert notes  # at least one notify fired
+
+
+def test_learn_binds_and_persists(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl.arm_learn('record_toggle')
+    ctl.handle_trigger('note:0:60', 64)          # captured, not dispatched
+    assert looper.calls == []
+    assert ctl.learn is None
+    assert ctl.bindings['global']['note:0:60'] == 'record_toggle'
+    assert 'pc:9:12' not in ctl.bindings['global']   # old trigger removed
+    # persisted: a fresh controller on the same config sees it
+    _, ctl2, _ = make_controller(tmp_path)
+    assert ctl2.bindings['global']['note:0:60'] == 'record_toggle'
+
+
+def test_learn_unknown_action_ignored(tmp_path):
+    _, ctl, _ = make_controller(tmp_path)
+    ctl.arm_learn('warp_drive')
+    assert ctl.learn is None
+
+
+def test_learn_timeout_disarms(tmp_path, monkeypatch):
+    _, ctl, notes = make_controller(tmp_path)
+    t = [0.0]
+    monkeypatch.setattr(time, 'monotonic', lambda: t[0])
+    ctl.arm_learn('tap_tempo')
+    t[0] = 5.0
+    ctl.check_learn_timeout()
+    assert ctl.learn == 'tap_tempo'              # still armed at 5s
+    t[0] = 11.0
+    ctl.check_learn_timeout()
+    assert ctl.learn is None                     # disarmed after 10s
+
+
+def test_status_lists_actions_with_triggers(tmp_path):
+    _, ctl, _ = make_controller(tmp_path)
+    st = ctl.status()
+    assert st['connected'] is False and st['mode'] == 'play'
+    by_id = {a['id']: a for a in st['actions']}
+    assert by_id['record_toggle']['trigger'] == 'pc:9:12'
+    assert by_id['loop_volume_1']['trigger'] == 'cc:0:70'
+    assert by_id['launch_section_1']['label'] == 'Launch section 1'
