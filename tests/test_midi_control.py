@@ -239,3 +239,20 @@ def test_status_lists_actions_with_triggers(tmp_path):
     assert by_id['record_toggle']['trigger'] == 'pc:9:12'
     assert by_id['loop_volume_1']['trigger'] == 'cc:0:70'
     assert by_id['launch_section_1']['label'] == 'Launch section 1'
+
+
+def test_match_port_case_insensitive_substring(tmp_path):
+    _, ctl, _ = make_controller(tmp_path)
+    names = ['Midi Through:Midi Through Port-0 14:0',
+             'MPK mini 3:MPK mini 3 MIDI 1 28:0']
+    assert ctl._match_port(names) == 'MPK mini 3:MPK mini 3 MIDI 1 28:0'
+    assert ctl._match_port(['Midi Through 14:0']) is None
+    assert ctl._match_port([]) is None
+
+
+def test_on_message_routes_through_normalize(tmp_path):
+    looper, ctl, _ = make_controller(tmp_path)
+    ctl._on_message(mido.Message('program_change', channel=9, program=4))
+    assert looper.launched == [11]
+    ctl._on_message(mido.Message('note_off', channel=0, note=48))  # ignored
+    assert looper.launched == [11]

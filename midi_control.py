@@ -180,3 +180,49 @@ class MidiController:
             'actions': [{'id': a, 'label': label, 'trigger': trigger_of.get(a)}
                         for a, (_mode, label) in ACTIONS.items()],
         }
+
+    # ------------------------------------------------------------ hot-plug
+    def _match_port(self, names):
+        want = self.port_match.lower()
+        return next((n for n in names if want in n.lower()), None)
+
+    def _on_message(self, msg):
+        normalized = normalize(msg)
+        if normalized:
+            self.handle_trigger(*normalized)
+
+    def start(self):
+        threading.Thread(target=self._manager_loop, daemon=True,
+                         name='midi-manager').start()
+
+    def stop(self):
+        self._stop.set()
+
+    def _manager_loop(self):
+        import mido
+        while not self._stop.is_set():
+            self.check_learn_timeout()
+            try:
+                names = mido.get_input_names()
+            except Exception:
+                names = []
+            match = self._match_port(names)
+            if self._port is None and match:
+                try:
+                    self._port = mido.open_input(match, callback=self._on_message)
+                    self.connected = True
+                    print(f"🎹 MIDI connected: {match}")
+                    self.notify()
+                except Exception as e:
+                    print(f"🎹 MIDI open failed: {e}")
+                    self._port = None
+            elif self._port is not None and match is None:
+                try:
+                    self._port.close()
+                except Exception:
+                    pass
+                self._port = None
+                self.connected = False
+                print("🎹 MIDI disconnected")
+                self.notify()
+            self._stop.wait(2.0)
