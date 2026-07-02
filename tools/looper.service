@@ -1,0 +1,14 @@
+[Unit]
+Description=Guitar Looper
+After=sound.target network.target
+
+[Service]
+Type=simple
+User=max
+WorkingDirectory=/home/max/looper
+ExecStart=/home/max/looper/bin/python main.py --headless
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
