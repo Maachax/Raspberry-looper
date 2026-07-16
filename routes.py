@@ -225,6 +225,8 @@ def handle_command(data):
         looper.apply_trim(data.get('start', 0.0), data.get('end', 0.0))
     elif command == 'auto_trim_silence':
         looper.auto_trim_silence()
+    elif command == 'reset_trim':
+        looper.reset_trim()
     elif command == 'rename_layer':
         looper.rename_layer(data.get('layer_id', 0), data.get('name', ''))
     elif command == 'set_layer_color':

@@ -20,6 +20,7 @@
             },
             trim: {
                 can_trim: false,
+                can_reset: false,
                 reason: ''
             },
             export: {
@@ -1378,6 +1379,12 @@
         }
         
         function resetTrim() {
+            if (serverState.trim?.can_reset) {
+                sendCommand('reset_trim');
+                // Server restores the original; re-fetch so handles + waveform follow
+                setTimeout(() => socket.emit('get_waveform'), 100);
+                return;
+            }
             trimStart = 0;
             trimEnd = originalDuration;
             updateTrimUI();
