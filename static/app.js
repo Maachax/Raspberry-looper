@@ -264,63 +264,79 @@
 
             const W = 640;
             const padL = 42, padR = 12, padT = 18, padB = 22;
-            const FRETS = 12;
             const STRING_SPACING = 23; // px between strings (room for 2-line labels)
-            const H = padT + padB + STRING_SPACING * (STRINGS - 1);
-            const fretW = (W - padL - padR) / FRETS;
             const DOT_R = 10;
-            const openX = padL - fretW * 0.45; // leaves room for the gold ring on open-string notes
+            const boardH = padT + padB + STRING_SPACING * (STRINGS - 1);
+            const ROW_GAP = 8;
+            const H = boardH * 2 + ROW_GAP;
 
-            const fretX = f => padL + f * fretW;
-            const noteX = f => f === 0 ? openX : padL + (f - 0.5) * fretW;
-            const stringY = s => padT + (STRINGS - 1 - s) * STRING_SPACING; // s=0 = lowest string = bottom
+            // One row of the board: frets fretLo..fretHi, plus open strings on row A
+            function drawRow(yTop, fretLo, fretHi, withOpen, singleMarkers, doubleMarker) {
+                const nFrets = fretHi - fretLo;
+                const fretW = (W - padL - padR) / nFrets;
+                const openX = padL - fretW * 0.45; // leaves room for the gold ring on open-string notes
+                const fretX = f => padL + (f - fretLo) * fretW;
+                const noteX = f => f === 0 ? openX : padL + (f - fretLo - 0.5) * fretW;
+                const stringY = s => yTop + padT + (STRINGS - 1 - s) * STRING_SPACING; // s=0 = lowest string = bottom
+                let out = '';
+
+                // String lines
+                for (let s = 0; s < STRINGS; s++) {
+                    const y = stringY(s);
+                    const sw = 0.7 + s * 0.32;
+                    const x1 = withOpen ? openX - 4 : fretX(fretLo);
+                    out += `<line x1="${x1}" y1="${y}" x2="${fretX(fretHi)}" y2="${y}" stroke="#3a4557" stroke-width="${sw}"/>`;
+                }
+
+                // Fret lines (nut / row-anchor thicker)
+                for (let f = fretLo; f <= fretHi; f++) {
+                    const x = fretX(f);
+                    const isAnchor = f === fretLo;
+                    out += `<line x1="${x}" y1="${yTop + padT}" x2="${x}" y2="${yTop + padT + (STRINGS-1)*STRING_SPACING}" stroke="${isAnchor ? '#6b7280' : '#1e2533'}" stroke-width="${isAnchor ? 3 : 1.5}"/>`;
+                }
+
+                // Row B: label its anchor fret ("12")
+                if (!withOpen) {
+                    out += `<text x="${fretX(fretLo)}" y="${yTop + padT - 6}" text-anchor="middle" font-size="8" fill="#6b7280">${fretLo}</text>`;
+                }
+
+                // Position markers below strings
+                const markerY = yTop + padT + (STRINGS - 1) * STRING_SPACING + 14;
+                for (const mf of singleMarkers) {
+                    out += `<circle cx="${padL + (mf - fretLo - 0.5) * fretW}" cy="${markerY}" r="3.5" fill="#2d3748"/>`;
+                }
+                const xd = padL + (doubleMarker - fretLo - 0.5) * fretW;
+                out += `<circle cx="${xd - 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
+                out += `<circle cx="${xd + 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
+
+                // Note dots — every scale tone labeled note-name + interval; defining notes gold
+                const fStart = withOpen ? 0 : fretLo + 1;
+                for (let s = 0; s < STRINGS; s++) {
+                    const y = stringY(s);
+                    for (let f = fStart; f <= fretHi; f++) {
+                        const noteIdx = (OPEN_STRINGS[s] + f) % 12;
+                        const interval = (noteIdx - rootIdx + 12) % 12;
+                        if (!intervals.has(interval)) continue;
+                        const isRoot = interval === 0;
+                        const isChar = charSet.has(interval);
+                        const x = noteX(f);
+                        const fill = isRoot ? '#ed8936' : (isChar ? '#f6c453' : '#4fd1c5');
+                        if (isChar) {
+                            out += `<circle cx="${x}" cy="${y}" r="${DOT_R + 2.5}" fill="none" stroke="#f6c453" stroke-width="1.4" opacity="0.9"/>`;
+                        }
+                        out += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${fill}"${isChar ? ' filter="url(#goldGlow)"' : ''} opacity="0.95"/>`;
+                        const noteName = SCALE_NOTES[noteIdx].replace('#', '♯');
+                        out += `<text x="${x}" y="${y - 1.5}" text-anchor="middle" font-size="8" font-weight="bold" fill="#15202b">${noteName}</text>`;
+                        out += `<text x="${x}" y="${y + 7}" text-anchor="middle" font-size="6" fill="#15202b" opacity="0.82">${INTERVAL_LABELS[interval]}</text>`;
+                    }
+                }
+                return out;
+            }
 
             let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" width="100%" style="display:block">`;
             svg += `<defs><filter id="goldGlow"><feGaussianBlur stdDeviation="2.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
-
-            // String lines
-            for (let s = 0; s < STRINGS; s++) {
-                const y = stringY(s);
-                const sw = 0.7 + s * 0.32;
-                svg += `<line x1="${openX - 4}" y1="${y}" x2="${fretX(FRETS)}" y2="${y}" stroke="#3a4557" stroke-width="${sw}"/>`;
-            }
-
-            // Fret lines (nut thicker)
-            for (let f = 0; f <= FRETS; f++) {
-                const x = fretX(f);
-                svg += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + (STRINGS-1)*STRING_SPACING}" stroke="${f === 0 ? '#6b7280' : '#1e2533'}" stroke-width="${f === 0 ? 3 : 1.5}"/>`;
-            }
-
-            // Position markers below strings
-            const markerY = padT + (STRINGS - 1) * STRING_SPACING + 14;
-            for (const mf of [3, 5, 7, 9]) {
-                svg += `<circle cx="${padL + (mf - 0.5) * fretW}" cy="${markerY}" r="3.5" fill="#2d3748"/>`;
-            }
-            const x12 = padL + 11.5 * fretW;
-            svg += `<circle cx="${x12 - 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
-            svg += `<circle cx="${x12 + 5}" cy="${markerY}" r="3" fill="#2d3748"/>`;
-
-            // Note dots — every scale tone labeled note-name + interval; defining notes gold
-            for (let s = 0; s < STRINGS; s++) {
-                const y = stringY(s);
-                for (let f = 0; f <= FRETS; f++) {
-                    const noteIdx = (OPEN_STRINGS[s] + f) % 12;
-                    const interval = (noteIdx - rootIdx + 12) % 12;
-                    if (!intervals.has(interval)) continue;
-                    const isRoot = interval === 0;
-                    const isChar = charSet.has(interval);
-                    const x = noteX(f);
-                    const fill = isRoot ? '#ed8936' : (isChar ? '#f6c453' : '#4fd1c5');
-                    if (isChar) {
-                        svg += `<circle cx="${x}" cy="${y}" r="${DOT_R + 2.5}" fill="none" stroke="#f6c453" stroke-width="1.4" opacity="0.9"/>`;
-                    }
-                    svg += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${fill}"${isChar ? ' filter="url(#goldGlow)"' : ''} opacity="0.95"/>`;
-                    const noteName = SCALE_NOTES[noteIdx].replace('#', '♯');
-                    svg += `<text x="${x}" y="${y - 1.5}" text-anchor="middle" font-size="8" font-weight="bold" fill="#15202b">${noteName}</text>`;
-                    svg += `<text x="${x}" y="${y + 7}" text-anchor="middle" font-size="6" fill="#15202b" opacity="0.82">${INTERVAL_LABELS[interval]}</text>`;
-                }
-            }
-
+            svg += drawRow(0, 0, 12, true, [3, 5, 7, 9], 12);                      // open + frets 0–12
+            svg += drawRow(boardH + ROW_GAP, 12, 24, false, [15, 17, 19, 21], 24); // frets 13–24
             svg += `</svg>`;
             document.getElementById('fretboard').innerHTML = svg;
         }
