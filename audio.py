@@ -142,6 +142,7 @@ class WebLooper:
         # Master loop timing
         self.master_length = 0          # Length in samples
         self.master_position = 0        # Current playback position
+        self._pre_trim_backup = None    # Master audio before first trim; volatile, never saved
         
         # Recording buffers
         self.recording_buffer = np.zeros(self.max_samples, dtype=np.float32)
@@ -371,7 +372,8 @@ class WebLooper:
         
         layer = LoopLayer(layer_id, name, buffer)
         self.layers.append(layer)
-        
+        self._pre_trim_backup = None  # original take no longer restorable once overdubbed
+
         self.state = LooperState.PLAYING
         print(f"✓ {name} recorded ({self.master_length / SAMPLE_RATE:.1f}s)")
 
@@ -457,6 +459,7 @@ class WebLooper:
             
             self.recording_buffer = np.zeros(self.max_samples, dtype=np.float32)
             self.recording_position = 0
+            self._pre_trim_backup = None
             self.state = LooperState.RECORDING_MASTER
             
             print("● Recording master loop...")
@@ -601,6 +604,7 @@ class WebLooper:
             self.layers = []
             self.master_length = 0
             self.master_position = 0
+            self._pre_trim_backup = None
             self.state = LooperState.IDLE
             self.sections = []
             self._next_section_id = 1
@@ -865,6 +869,7 @@ class WebLooper:
 
             self.master_length = meta.get('master_length', len(buffers[0]))
             self.master_position = 0
+            self._pre_trim_backup = None
             self.bpm = meta.get('bpm', 120.0)
             self.beats_per_bar = meta.get('beats_per_bar', 4)
             self.master_volume = meta.get('master_volume', 0.8)
@@ -1027,6 +1032,8 @@ class WebLooper:
             
             # Create new trimmed buffer (no modification - crossfade handled at playback)
             old_buffer = self.layers[0].buffer
+            if self._pre_trim_backup is None:
+                self._pre_trim_backup = old_buffer[:self.master_length].copy()
             new_buffer = old_buffer[start_sample:end_sample].copy()
             
             # Update master layer
@@ -1044,6 +1051,23 @@ class WebLooper:
             return (len(self.layers) == 1 and
                     self.state in (LooperState.PLAYING,) and
                     self.master_length > 0)
+
+    def reset_trim(self) -> bool:
+        """Restore master to its pre-trim original (undoes all trims)."""
+        with self.lock:
+            if self._pre_trim_backup is None:
+                print("✗ Cannot reset trim: nothing to restore")
+                return False
+            if len(self.layers) != 1:
+                print("✗ Cannot reset trim: overdubs exist")
+                return False
+            buf = self._pre_trim_backup
+            self.layers[0] = LoopLayer(0, "Master", buf)
+            self.master_length = len(buf)
+            self.master_position = 0
+            self._pre_trim_backup = None
+            print(f"✓ Trim reset: restored original ({len(buf) / SAMPLE_RATE:.2f}s)")
+            return True
 
     def auto_trim_silence(self, threshold_db: float = -40.0) -> bool:
         """
@@ -1575,6 +1599,7 @@ class WebLooper:
             dropout_count = self.dropout_count
             layers_data = [layer.to_dict() for layer in self.layers]
             num_layers = len(self.layers)
+            has_trim_backup = self._pre_trim_backup is not None
             input_level = self.input_level
             input_peak = self.input_peak
             scale_root = self.scale_root
@@ -1645,6 +1670,7 @@ class WebLooper:
             },
             'trim': {
                 'can_trim': can_trim,
+                'can_reset': can_trim and has_trim_backup,
                 'reason': '' if can_trim else ('Add overdubs disabled trimming' if num_layers > 1 else ''),
             },
             'export': {
