@@ -653,6 +653,13 @@ body.edit-mode .edit-panels { display: flex; flex: 1 1 0; min-height: 0; }
 .btn-mute:hover { border-color: #f59e42; color: #f59e42; }
 .btn-mute.muted { background: rgba(245, 158, 66, 0.15); border-color: #f59e42; color: #f59e42; }
 
+.btn-delete-layer {
+    background: var(--surface);
+    border-color: var(--border-dim);
+    color: var(--text-muted);
+}
+.btn-delete-layer:hover { color: var(--rec); border-color: var(--rec); }
+
 .btn-delete {
     background: transparent;
     border-color: rgba(232, 66, 74, 0.4);

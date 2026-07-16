@@ -1877,6 +1877,10 @@
                                         onclick="toggleLayer(${layer.id})">
                                     ${layer.is_playing ? 'MUTE' : 'UNMUTE'}
                                 </button>
+                                ${layer.id !== 0 ? `
+                                    <button class="btn btn-small btn-delete-layer"
+                                            onclick="deleteLayer(${layer.id})">✕</button>
+                                ` : ''}
                             </div>
                         </div>
                     `;
