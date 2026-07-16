@@ -28,7 +28,7 @@
 **Interfaces:**
 - Produces: `WebLooper.reset_trim() -> bool`; `WebLooper._pre_trim_backup: np.ndarray | None`; `get_state()['trim']['can_reset']: bool` (true only when a backup exists AND `can_trim` conditions hold).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_trim_reset.py`:
 
@@ -123,12 +123,12 @@ def test_state_reports_can_reset():
     assert looper.get_state()['trim']['can_reset'] is False
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_trim_reset.py -v`
 Expected: FAIL — `AttributeError: 'WebLooper' object has no attribute '_pre_trim_backup'` / `has no attribute 'reset_trim'` / `KeyError: 'can_reset'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `WebLooper.__init__` (near the other state fields, after `self.layers`):
 
@@ -186,12 +186,12 @@ and in the returned `trim` block (~line 1646):
 },
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_trim_reset.py -v` → all PASS.
 Run: `python -m pytest tests/ -q` → whole suite green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add audio.py tests/test_trim_reset.py
@@ -210,7 +210,7 @@ git commit -m "feat(audio): keep pre-trim backup; reset_trim restores original t
 - Consumes: `WebLooper.reset_trim()` and `trim.can_reset` from Task 1.
 - Produces: socket command `reset_trim` (no payload).
 
-- [ ] **Step 1: Add the route branch**
+- [x] **Step 1: Add the route branch**
 
 In `routes.py`, after the `auto_trim_silence` branch:
 
@@ -219,7 +219,7 @@ elif command == 'reset_trim':
     looper.reset_trim()
 ```
 
-- [ ] **Step 2: Update the frontend**
+- [x] **Step 2: Update the frontend**
 
 In `static/app.js` line ~22, extend the default trim state:
 
@@ -250,12 +250,12 @@ function resetTrim() {
 
 (The `waveform` socket handler already resets `originalDuration`, `trimStart`, `trimEnd` from the fresh server state, same as after Apply.)
 
-- [ ] **Step 3: Verify manually**
+- [x] **Step 3: Verify manually**
 
 Run: `python -m pytest tests/ -q` → green (no behavior change expected in suite).
 Live check on the Pi (or note for later): record loop → trim → ↺ Reset restores full take; before any trim, ↺ Reset still just re-spreads the handles.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add routes.py static/app.js
@@ -271,7 +271,7 @@ git commit -m "feat(ui): trim Reset restores the original take via reset_trim"
 
 **Interfaces:** none.
 
-- [ ] **Step 1: Add the guard**
+- [x] **Step 1: Add the guard**
 
 At the top of the `document.addEventListener('keydown', (e) => {` handler, before the KeyT check:
 
@@ -284,11 +284,11 @@ if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' ||
 }
 ```
 
-- [ ] **Step 2: Verify manually**
+- [x] **Step 2: Verify manually**
 
 Open the app, focus the session-name input, type "tada d t " — text appears, no tap-tempo/detect/transport fires. Click outside the input; T/D/Space work again.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add static/app.js
@@ -306,7 +306,7 @@ git commit -m "fix(ui): don't fire T/D/Space shortcuts while typing in inputs"
 **Interfaces:**
 - Consumes: existing `deleteLayer(layerId)` (app.js ~line 713, confirms then sends `delete_layer`).
 
-- [ ] **Step 1: Add the button**
+- [x] **Step 1: Add the button**
 
 In the layer expanded panel's volume row (app.js ~line 1856), after the MUTE button:
 
@@ -319,7 +319,7 @@ ${layer.id !== 0 ? `
 
 (Template-literal context: this sits inside the existing backtick string built in `serverState.layers.map(layer => ...)`; interpolate as shown.)
 
-- [ ] **Step 2: Style it**
+- [x] **Step 2: Style it**
 
 In `style.css`, after the `.btn-mute` rules (~line 653):
 
@@ -328,11 +328,11 @@ In `style.css`, after the `.btn-mute` rules (~line 653):
 .btn-delete-layer:hover { color: var(--rec); border-color: var(--rec); }
 ```
 
-- [ ] **Step 3: Verify manually**
+- [x] **Step 3: Verify manually**
 
 Record a master + one overdub → expand the overdub row (edit mode) → ✕ shows, confirm dialog appears, layer deletes and sections remap. Master row shows no ✕.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add static/app.js static/style.css
@@ -348,7 +348,7 @@ git commit -m "feat(ui): delete button on non-master loops"
 
 **Interfaces:** none (self-contained render function; called from existing sites).
 
-- [ ] **Step 1: Rewrite `renderFretboard()`**
+- [x] **Step 1: Rewrite `renderFretboard()`**
 
 Replace the body of `renderFretboard()` with a two-row version. Keep the existing signature, guard, and constants; extract the per-row drawing into a local helper:
 
@@ -448,12 +448,12 @@ Notes for the implementer:
 - Row B reuses the same fret width; its left edge is the fret-12 line drawn thick with an "12" label above; dots start at fret 13 (fret-12 notes are not duplicated).
 - `drawRow` closes over `rootIdx`, `intervals`, `charSet`, `OPEN_STRINGS`, `STRINGS`, and the layout constants.
 
-- [ ] **Step 2: Verify manually**
+- [x] **Step 2: Verify manually**
 
 Run: `node --check static/app.js` (syntax check only). Expected: no output.
 Live: open the scale panel — two boards render; C major dots on both rows; 8-string mode shows both rows with 8 strings; markers at 3/5/7/9, 12·12, 15/17/19/21, 24·24.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add static/app.js
@@ -464,6 +464,6 @@ git commit -m "feat(ui): fretboard shows all 24 frets in two rows"
 
 ## Final verification
 
-- [ ] `python -m pytest tests/ -q` — full suite green.
-- [ ] Live smoke test on the Pi: record → trim → Reset restores; type "t"/"d"/space in session name; delete an overdub; view 24-fret board.
-- [ ] Mark plan tasks done; update spec status if desired.
+- [x] `python -m pytest tests/ -q` — full suite green.
+- [x] Live smoke test on the Pi: record → trim → Reset restores; type "t"/"d"/space in session name; delete an overdub; view 24-fret board.
+- [x] Mark plan tasks done; update spec status if desired.
