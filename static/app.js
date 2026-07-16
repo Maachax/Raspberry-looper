@@ -1154,6 +1154,13 @@
         // =================================================================
         
         document.addEventListener('keydown', (e) => {
+            // Never steal keys from text entry (session name, trim inputs, ...)
+            const target = e.target;
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' ||
+                           target.tagName === 'SELECT' || target.isContentEditable)) {
+                return;
+            }
+
             // TAP TEMPO: T key
             if (e.code === 'KeyT' && !e.repeat) {
                 e.preventDefault();
