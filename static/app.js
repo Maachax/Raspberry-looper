@@ -146,6 +146,14 @@
             const n = pickedNotes.size;
             count.textContent = n === 0 ? '' : `${n} note${n > 1 ? 's' : ''} picked`;
             clearBtn.style.display = n > 0 ? '' : 'none';
+            updateDetectScaleBtn();
+        }
+
+        function updateDetectScaleBtn() {
+            const btn = document.getElementById('detectScaleBtn');
+            if (!btn) return;
+            const canDetect = serverState.state === 'playing' || pickedNotes.size > 0;
+            btn.disabled = !canDetect || isDetectingScale;
         }
 
         function setGuitarMode(mode) {
@@ -211,8 +219,8 @@
 
         function detectScale() {
             if (isDetectingScale) return;
-            if (serverState.state !== 'playing') {
-                alert('Record a loop first before detecting scale');
+            if (serverState.state !== 'playing' && pickedNotes.size === 0) {
+                alert('Record a loop or pick some notes first');
                 return;
             }
             isDetectingScale = true;
@@ -220,7 +228,9 @@
             btn.classList.add('detecting');
             btn.textContent = '🔍 DETECTING...';
             document.getElementById('scaleCandidates').classList.remove('visible');
-            socket.emit('detect_scale');
+            socket.emit('detect_scale', {
+                selected_notes: [...pickedNotes].map(pc => SCALE_NOTES[pc])
+            });
         }
 
         function handleScaleDetected(result) {
@@ -229,12 +239,17 @@
             btn.classList.remove('detecting');
             btn.textContent = '🔍 DETECT SCALE';
 
-            if (!result.success || !result.candidates || result.candidates.length === 0) {
+            if (!result.success) {
                 alert(result.error || 'Scale detection failed');
                 return;
             }
-
             const container = document.getElementById('scaleCandidates');
+            if (result.candidates.length === 0) {
+                container.innerHTML = '<div class="no-match-msg">No scale matches those notes</div>';
+                container.classList.add('visible');
+                return;
+            }
+
             container.innerHTML = '';
             result.candidates.forEach(c => {
                 const label = SCALE_LABELS[c.scale_type] || c.scale_type;
@@ -1893,11 +1908,8 @@
                 btnDetect.disabled = (state !== 'playing' || isDetecting);
             }
 
-            // DETECT SCALE button - only enabled when playing
-            const btnDetectScale = document.getElementById('detectScaleBtn');
-            if (btnDetectScale) {
-                btnDetectScale.disabled = (state !== 'playing' || isDetectingScale);
-            }
+            // DETECT SCALE button - enabled when playing or when notes are picked
+            updateDetectScaleBtn();
             
             // --- Layers List ---
             const layersList = document.getElementById('layersList');

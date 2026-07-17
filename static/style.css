@@ -1378,6 +1378,8 @@ kbd {
 .scale-candidate-chip:hover { border-color: var(--accent); color: var(--text); }
 .scale-candidate-chip .chip-score { color: var(--text-muted); font-size: 0.88em; }
 
+.no-match-msg { font-size: 0.78em; color: var(--text-muted); padding: 5px 0; }
+
 .pick-notes-row {
     display: flex;
     align-items: center;
