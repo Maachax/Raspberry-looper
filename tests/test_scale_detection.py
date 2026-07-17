@@ -111,3 +111,65 @@ def test_match_scales_sorted_descending():
     results = match_scales_by_notes({9, 0, 4})
     scores = [c['_score'] for c in results]
     assert scores == sorted(scores, reverse=True)
+
+
+from audio import score_scale_templates
+
+
+def _uniform_chroma(pcs):
+    """Length-12 chroma with equal energy on the given pitch classes, sum=1."""
+    v = np.zeros(12)
+    for pc in pcs:
+        v[pc] = 1.0
+    return v / v.sum()
+
+
+A_MINOR_PCS = [9, 11, 0, 2, 4, 5, 7]  # A B C D E F G
+
+
+def test_score_templates_bass_disambiguates_relative_modes():
+    """Same 7 notes, bass says A -> A minor must beat C major and D dorian."""
+    chroma = _uniform_chroma(A_MINOR_PCS)
+    bass = np.zeros(12)
+    bass[9] = 1.0  # all bass energy on A
+    results = score_scale_templates(chroma, bass)
+    by_key = {(c['root'], c['scale_type']): c['_score'] for c in results}
+    assert by_key[('A', 'minor')] > by_key[('C', 'major')]
+    assert by_key[('A', 'minor')] > by_key[('D', 'dorian')]
+    assert results[0]['root'] == 'A'
+
+
+def test_score_templates_out_of_scale_energy_penalized():
+    """Adding out-of-scale energy must lower a scale's score."""
+    clean = _uniform_chroma(A_MINOR_PCS)
+    polluted = np.array(clean)
+    polluted[1] += 0.3  # C# does not belong to A minor
+    polluted = polluted / polluted.sum()
+    bass = _uniform_chroma([9])
+
+    def score_of(results, root, stype):
+        return next(c['_score'] for c in results
+                    if c['root'] == root and c['scale_type'] == stype)
+
+    s_clean = score_of(score_scale_templates(clean, bass), 'A', 'minor')
+    s_polluted = score_of(score_scale_templates(polluted, bass), 'A', 'minor')
+    assert s_polluted < s_clean
+
+
+def test_score_templates_size_normalization():
+    """Playing only pentatonic notes: the pentatonic must beat the full scale."""
+    a_pent_minor = [9, 0, 2, 4, 7]  # A C D E G
+    chroma = _uniform_chroma(a_pent_minor)
+    bass = _uniform_chroma([9])
+    results = score_scale_templates(chroma, bass)
+    by_key = {(c['root'], c['scale_type']): c['_score'] for c in results}
+    assert by_key[('A', 'pent_minor')] > by_key[('A', 'minor')]
+
+
+def test_score_templates_returns_all_168_sorted():
+    chroma = _uniform_chroma(A_MINOR_PCS)
+    bass = _uniform_chroma([9])
+    results = score_scale_templates(chroma, bass)
+    assert len(results) == 12 * len(SCALE_TEMPLATES)
+    scores = [c['_score'] for c in results]
+    assert scores == sorted(scores, reverse=True)

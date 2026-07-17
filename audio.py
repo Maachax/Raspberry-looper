@@ -53,6 +53,34 @@ def match_scales_by_notes(selected_pcs: set) -> list:
     candidates.sort(key=lambda c: c['_score'], reverse=True)
     return candidates
 
+
+# Scoring tunables: penalty for energy on out-of-scale notes, and how much
+# the (bass-weighted) root emphasis contributes on top of the template fit.
+SCALE_OUT_PENALTY = 0.7
+ROOT_BASS_WEIGHT = 0.12
+
+
+def score_scale_templates(chroma_norm, bass_norm) -> list:
+    """
+    Score all 12 roots x all templates against a chroma profile.
+    Both inputs are length-12 arrays summing to 1 (C=0 .. B=11).
+    Fit rewards in-scale energy, penalizes out-of-scale energy, and is
+    normalized by scale size; the root term blends bass-register and
+    full-band energy at the root to pick the tonal center.
+    """
+    candidates = []
+    for root_idx, root_name in enumerate(NOTE_NAMES):
+        for scale_type, intervals in SCALE_TEMPLATES.items():
+            pcs = [(root_idx + iv) % 12 for iv in intervals]
+            in_e = float(sum(chroma_norm[pc] for pc in pcs))
+            out_e = 1.0 - in_e
+            base = (in_e - SCALE_OUT_PENALTY * out_e) / len(intervals)
+            root_term = 0.5 * float(bass_norm[root_idx]) + 0.5 * float(chroma_norm[root_idx])
+            candidates.append({'root': root_name, 'scale_type': scale_type,
+                               '_score': base + ROOT_BASS_WEIGHT * root_term})
+    candidates.sort(key=lambda c: c['_score'], reverse=True)
+    return candidates
+
 # Optional: librosa for tempo detection
 try:
     import librosa
