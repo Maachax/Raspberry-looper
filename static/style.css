@@ -1378,6 +1378,38 @@ kbd {
 .scale-candidate-chip:hover { border-color: var(--accent); color: var(--text); }
 .scale-candidate-chip .chip-score { color: var(--text-muted); font-size: 0.88em; }
 
+.pick-notes-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+.pick-notes-btn {
+    padding: 6px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
+    color: var(--text-muted);
+    font-size: 0.78em;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.pick-notes-btn:hover { color: var(--text); border-color: var(--accent); }
+.pick-notes-btn.active { color: #4f9cf1; border-color: #4f9cf1; }
+.picked-count { font-size: 0.75em; color: var(--text-muted); }
+.clear-picked-btn {
+    padding: 4px 8px;
+    background: none;
+    border: 1px solid var(--border-dim);
+    border-radius: 0;
+    color: var(--text-muted);
+    font-size: 0.7em;
+    cursor: pointer;
+}
+.clear-picked-btn:hover { color: var(--text); border-color: var(--accent); }
+
 /* ==========================================================================
    PANELS
    ========================================================================== */

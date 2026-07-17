@@ -116,6 +116,38 @@
         let scaleType = 'minor';
         let guitarMode = localStorage.getItem('guitarMode') || '8string';
 
+        // Note-picker state: pitch classes (0-11, C=0) the user tapped
+        let pickMode = false;
+        let pickedNotes = new Set();
+
+        function togglePickMode() {
+            pickMode = !pickMode;
+            document.getElementById('pickNotesBtn').classList.toggle('active', pickMode);
+            renderFretboard();
+            updatePickedUI();
+        }
+
+        function clearPickedNotes() {
+            pickedNotes.clear();
+            renderFretboard();
+            updatePickedUI();
+        }
+
+        function togglePickedNote(pc) {
+            if (pickedNotes.has(pc)) pickedNotes.delete(pc);
+            else pickedNotes.add(pc);
+            renderFretboard();
+            updatePickedUI();
+        }
+
+        function updatePickedUI() {
+            const count = document.getElementById('pickedCount');
+            const clearBtn = document.getElementById('clearPickedBtn');
+            const n = pickedNotes.size;
+            count.textContent = n === 0 ? '' : `${n} note${n > 1 ? 's' : ''} picked`;
+            clearBtn.style.display = n > 0 ? '' : 'none';
+        }
+
         function setGuitarMode(mode) {
             guitarMode = mode;
             localStorage.setItem('guitarMode', mode);
@@ -316,18 +348,35 @@
                     for (let f = fStart; f <= fretHi; f++) {
                         const noteIdx = (OPEN_STRINGS[s] + f) % 12;
                         const interval = (noteIdx - rootIdx + 12) % 12;
-                        if (!intervals.has(interval)) continue;
+                        const inScale = intervals.has(interval);
+                        const isPicked = pickedNotes.has(noteIdx);
+                        if (!pickMode && !inScale) continue;
                         const isRoot = interval === 0;
                         const isChar = charSet.has(interval);
                         const x = noteX(f);
-                        const fill = isRoot ? '#ed8936' : (isChar ? '#f6c453' : '#4fd1c5');
-                        if (isChar) {
-                            out += `<circle cx="${x}" cy="${y}" r="${DOT_R + 2.5}" fill="none" stroke="#f6c453" stroke-width="1.4" opacity="0.9"/>`;
-                        }
-                        out += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${fill}"${isChar ? ' filter="url(#goldGlow)"' : ''} opacity="0.95"/>`;
                         const noteName = SCALE_NOTES[noteIdx].replace('#', '♯');
-                        out += `<text x="${x}" y="${y - 1.5}" text-anchor="middle" font-size="8" font-weight="bold" fill="#15202b">${noteName}</text>`;
-                        out += `<text x="${x}" y="${y + 7}" text-anchor="middle" font-size="6" fill="#15202b" opacity="0.82">${INTERVAL_LABELS[interval]}</text>`;
+                        let dot = '';
+                        if (inScale) {
+                            const fill = isRoot ? '#ed8936' : (isChar ? '#f6c453' : '#4fd1c5');
+                            if (isChar) {
+                                dot += `<circle cx="${x}" cy="${y}" r="${DOT_R + 2.5}" fill="none" stroke="#f6c453" stroke-width="1.4" opacity="0.9"/>`;
+                            }
+                            dot += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${fill}"${isChar ? ' filter="url(#goldGlow)"' : ''} opacity="0.95"/>`;
+                            dot += `<text x="${x}" y="${y - 1.5}" text-anchor="middle" font-size="8" font-weight="bold" fill="#15202b">${noteName}</text>`;
+                            dot += `<text x="${x}" y="${y + 7}" text-anchor="middle" font-size="6" fill="#15202b" opacity="0.82">${INTERVAL_LABELS[interval]}</text>`;
+                        } else {
+                            // Pick mode only: faint dot for out-of-scale positions
+                            dot += `<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="#2d3748" opacity="0.5"/>`;
+                            dot += `<text x="${x}" y="${y + 2.5}" text-anchor="middle" font-size="8" fill="#8b96a5" opacity="0.7">${noteName}</text>`;
+                        }
+                        if (isPicked) {
+                            dot += `<circle cx="${x}" cy="${y}" r="${DOT_R + 3}" fill="none" stroke="#4f9cf1" stroke-width="2"/>`;
+                        }
+                        if (pickMode) {
+                            out += `<g data-pc="${noteIdx}" style="cursor:pointer">${dot}</g>`;
+                        } else {
+                            out += dot;
+                        }
                     }
                 }
                 return out;
@@ -2138,6 +2187,14 @@
         initScaleRootButtons();
         const scaleRootDisplayEl = document.getElementById('scaleRootDisplay');
         if (scaleRootDisplayEl) scaleRootDisplayEl.textContent = scaleRoot;
+
+        document.getElementById('fretboard').addEventListener('click', (e) => {
+            if (!pickMode) return;
+            const g = e.target.closest('[data-pc]');
+            if (!g) return;
+            togglePickedNote(parseInt(g.dataset.pc, 10));
+        });
+
         setGuitarMode(guitarMode); // init toggle active state + render
 
 

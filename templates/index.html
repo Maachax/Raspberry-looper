@@ -141,6 +141,13 @@
                     <div class="scale-explain-title" id="scaleExplainTitle"></div>
                     <div class="scale-explain-text" id="scaleExplainText"></div>
                 </div>
+                <div class="pick-notes-row">
+                    <button class="pick-notes-btn" id="pickNotesBtn"
+                            onclick="togglePickMode()">🎯 PICK NOTES</button>
+                    <span class="picked-count" id="pickedCount"></span>
+                    <button class="clear-picked-btn" id="clearPickedBtn"
+                            onclick="clearPickedNotes()" style="display:none">✕ CLEAR</button>
+                </div>
                 <button class="detect-scale-btn" id="detectScaleBtn"
                         onclick="detectScale()" disabled>DETECT SCALE</button>
                 <div class="scale-candidates" id="scaleCandidates"></div>
