@@ -33,6 +33,26 @@ SCALE_TEMPLATES = {
     'whole_tone':     [0, 2, 4, 6, 8, 10],
 }
 
+
+def match_scales_by_notes(selected_pcs: set) -> list:
+    """
+    Pure theory matching: return every root+scale whose pitch-class set contains
+    ALL of selected_pcs, best-first. Score favors tighter scales (fewer extra
+    notes) and roots that are themselves selected.
+    """
+    candidates = []
+    for root_idx, root_name in enumerate(NOTE_NAMES):
+        for scale_type, intervals in SCALE_TEMPLATES.items():
+            pcs = {(root_idx + iv) % 12 for iv in intervals}
+            if not selected_pcs <= pcs:
+                continue
+            coverage = len(selected_pcs) / len(pcs)
+            root_bonus = 0.5 if root_idx in selected_pcs else 0.0
+            candidates.append({'root': root_name, 'scale_type': scale_type,
+                               '_score': coverage + root_bonus})
+    candidates.sort(key=lambda c: c['_score'], reverse=True)
+    return candidates
+
 # Optional: librosa for tempo detection
 try:
     import librosa

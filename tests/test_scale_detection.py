@@ -65,3 +65,49 @@ def test_detect_scale_fails_gracefully_with_silence():
     result = looper.detect_scale()
     assert result['success'] is False
     assert result['candidates'] == []
+
+
+from audio import match_scales_by_notes, SCALE_TEMPLATES, NOTE_NAMES
+
+
+def _pcs(candidate):
+    """Pitch-class set of a candidate dict."""
+    root = NOTE_NAMES.index(candidate['root'])
+    return {(root + iv) % 12 for iv in SCALE_TEMPLATES[candidate['scale_type']]}
+
+
+def test_match_scales_requires_all_selected_notes():
+    """Every returned scale must contain all selected pitch classes."""
+    selected = {9, 0, 4}  # A, C, E
+    results = match_scales_by_notes(selected)
+    assert len(results) > 0
+    for c in results:
+        assert selected <= _pcs(c)
+
+
+def test_match_scales_prefers_small_scales_with_selected_root():
+    """Top result should be a pentatonic rooted on a selected note (A/C/E)."""
+    selected = {9, 0, 4}  # A, C, E
+    results = match_scales_by_notes(selected)
+    top = results[0]
+    assert NOTE_NAMES.index(top['root']) in selected
+    assert len(SCALE_TEMPLATES[top['scale_type']]) == 5  # pentatonic beats 7-note
+
+
+def test_match_scales_root_bonus_beats_coverage_tiebreak():
+    """With one selected note, scales rooted on it must outrank same-size scales that merely contain it."""
+    results = match_scales_by_notes({9})  # just A
+    top = results[0]
+    assert top['root'] == 'A'
+
+
+def test_match_scales_chromatic_cluster_matches_nothing():
+    """7 consecutive semitones fit no template."""
+    results = match_scales_by_notes({0, 1, 2, 3, 4, 5, 6})
+    assert results == []
+
+
+def test_match_scales_sorted_descending():
+    results = match_scales_by_notes({9, 0, 4})
+    scores = [c['_score'] for c in results]
+    assert scores == sorted(scores, reverse=True)
