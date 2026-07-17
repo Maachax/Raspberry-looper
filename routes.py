@@ -171,10 +171,11 @@ def handle_detect_tempo():
 
 
 @socketio.on('detect_scale')
-def handle_detect_scale():
-    """Detect scale from recorded loop and send result to client."""
+def handle_detect_scale(data=None):
+    """Detect scale from recorded loop and/or picked notes, send result to client."""
     if looper:
-        result = looper.detect_scale()
+        selected = (data or {}).get('selected_notes')
+        result = looper.detect_scale(selected_notes=selected)
         emit('scale_detected', result)
 
 

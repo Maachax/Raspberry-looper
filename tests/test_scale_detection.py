@@ -173,3 +173,68 @@ def test_score_templates_returns_all_168_sorted():
     assert len(results) == 12 * len(SCALE_TEMPLATES)
     scores = [c['_score'] for c in results]
     assert scores == sorted(scores, reverse=True)
+
+
+def _make_looper_with_signal(signal):
+    looper = WebLooper()
+    looper.layers = [LoopLayer(0, "Master", signal)]
+    looper.master_length = len(signal)
+    return looper
+
+
+def _a_minor_with_bass_drone(seconds=2.0):
+    """All 7 A-natural-minor tones in octave 4 plus a strong A2 (110 Hz) drone."""
+    n = int(SAMPLE_RATE * seconds)
+    t = np.linspace(0, seconds, n, dtype=np.float64)
+    # A4 B4 C5 D5 E5 F5 G5
+    freqs = [440.0, 493.88, 523.25, 587.33, 659.25, 698.46, 783.99]
+    sig = sum(0.1 * np.sin(2 * np.pi * f * t) for f in freqs)
+    sig += 0.5 * np.sin(2 * np.pi * 110.0 * t)  # A2 bass drone
+    return sig.astype(np.float32)
+
+
+def test_detect_scale_bass_picks_a_minor_over_relatives():
+    """A minor notes + A bass drone: top candidate is root A, minor family."""
+    looper = _make_looper_with_signal(_a_minor_with_bass_drone())
+    result = looper.detect_scale()
+    assert result['success'] is True
+    assert result['candidates'][0]['root'] == 'A'
+    assert result['candidates'][0]['scale_type'] in ('minor', 'pent_minor')
+
+
+def test_detect_scale_selected_notes_filter_candidates():
+    """Every returned candidate must contain all selected notes."""
+    looper = _make_looper_with_signal(_a_minor_with_bass_drone())
+    result = looper.detect_scale(selected_notes=['C#'])
+    assert result['success'] is True
+    cs_pc = NOTE_NAMES.index('C#')
+    for c in result['candidates']:
+        assert cs_pc in _pcs(c)
+
+
+def test_detect_scale_theory_mode_without_loop():
+    """Notes picked but nothing recorded: pure theory matching, no librosa needed."""
+    looper = WebLooper()
+    result = looper.detect_scale(selected_notes=['A', 'C', 'E'])
+    assert result['success'] is True
+    assert 0 < len(result['candidates']) <= 5
+    assert result['candidates'][0]['score'] == 100
+    selected = {NOTE_NAMES.index(x) for x in ['A', 'C', 'E']}
+    for c in result['candidates']:
+        assert selected <= _pcs(c)
+
+
+def test_detect_scale_filter_can_empty_the_list():
+    """A selection no scale contains: success with empty candidates."""
+    looper = _make_looper_with_signal(_a_minor_with_bass_drone())
+    result = looper.detect_scale(
+        selected_notes=['C', 'C#', 'D', 'D#', 'E', 'F', 'F#'])
+    assert result['success'] is True
+    assert result['candidates'] == []
+
+
+def test_detect_scale_rejects_unknown_note_name():
+    looper = WebLooper()
+    result = looper.detect_scale(selected_notes=['H'])
+    assert result['success'] is False
+    assert result['candidates'] == []

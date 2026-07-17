@@ -81,6 +81,17 @@ def score_scale_templates(chroma_norm, bass_norm) -> list:
     candidates.sort(key=lambda c: c['_score'], reverse=True)
     return candidates
 
+
+def _top_scale_candidates(candidates: list, limit: int = 5) -> list:
+    """Cap to the top candidates and normalize scores so the best is 100."""
+    top = candidates[:limit]
+    if not top:
+        return []
+    best = top[0]['_score'] if top[0]['_score'] > 0 else 1.0
+    return [{'root': c['root'], 'scale_type': c['scale_type'],
+             'score': round(max(c['_score'], 0.0) / best * 100)}
+            for c in top]
+
 # Optional: librosa for tempo detection
 try:
     import librosa
@@ -1260,26 +1271,48 @@ class WebLooper:
                 'confidence': 0
             }
 
-    def detect_scale(self) -> dict:
+    def detect_scale(self, selected_notes=None) -> dict:
         """
-        Detect scale from the master loop using onset-weighted chroma analysis.
-        Returns dict with success flag and top 5 scale candidates ranked by fit.
+        Detect scale from the master loop (harmonic-separated CQT chroma,
+        penalized template scoring, bass-weighted root). Optional
+        selected_notes (note names the user picked) hard-filter the
+        candidates; with notes but no loop, falls back to pure theory
+        matching. Returns dict with success flag and top 5 candidates.
         """
-        if not LIBROSA_AVAILABLE:
-            return {'success': False, 'error': 'librosa not installed', 'candidates': []}
+        selected_pcs = set()
+        if selected_notes:
+            try:
+                selected_pcs = {NOTE_NAMES.index(n) for n in selected_notes}
+            except ValueError:
+                return {'success': False, 'error': 'Unknown note name',
+                        'candidates': []}
 
         with self.lock:
-            if len(self.layers) == 0 or self.master_length == 0:
-                return {'success': False, 'error': 'No audio recorded', 'candidates': []}
-            audio = self.layers[0].buffer[:self.master_length].copy()
+            has_audio = len(self.layers) > 0 and self.master_length > 0
+            audio = (self.layers[0].buffer[:self.master_length].copy()
+                     if has_audio else None)
+
+        if not has_audio:
+            if selected_pcs:
+                candidates = match_scales_by_notes(selected_pcs)
+                return {'success': True,
+                        'candidates': _top_scale_candidates(candidates)}
+            return {'success': False, 'error': 'No audio recorded',
+                    'candidates': []}
+
+        if not LIBROSA_AVAILABLE:
+            return {'success': False, 'error': 'librosa not installed',
+                    'candidates': []}
 
         try:
             audio_64 = audio.astype(np.float64)
+            harmonic = librosa.effects.harmonic(audio_64)
 
+            # Full-band chroma from the harmonic part, onset-weighted from
+            # the original signal (harmonic separation flattens attacks).
             onset_env = librosa.onset.onset_strength(y=audio_64, sr=SAMPLE_RATE)
-            chroma = librosa.feature.chroma_stft(y=audio_64, sr=SAMPLE_RATE)
+            chroma = librosa.feature.chroma_cqt(y=harmonic, sr=SAMPLE_RATE)
 
-            # Weight each chroma frame by its onset strength, then average
             n_frames = min(len(onset_env), chroma.shape[1])
             weights = onset_env[:n_frames]
             weighted_sum = weights.sum()
@@ -1290,30 +1323,36 @@ class WebLooper:
 
             total = chroma_vec.sum()
             if total <= 0:
-                return {'success': False, 'error': 'No pitched content detected', 'candidates': []}
+                return {'success': False, 'error': 'No pitched content detected',
+                        'candidates': []}
             chroma_norm = chroma_vec / total
 
-            # Score all 14 × 12 = 168 candidates
-            candidates = []
-            for root_idx, root_name in enumerate(NOTE_NAMES):
-                for scale_type, intervals in SCALE_TEMPLATES.items():
-                    pitch_classes = [(root_idx + iv) % 12 for iv in intervals]
-                    # Give extra weight to the root note in the scale, then normalize by scale size
-                    score_val = (float(chroma_norm[root_idx]) * 2.0
-                                 + sum(float(chroma_norm[pc]) for pc in pitch_classes if pc != root_idx))
-                    adjusted = score_val / (len(intervals) + 1)
-                    candidates.append({'root': root_name, 'scale_type': scale_type, '_score': adjusted})
+            # Bass-register profile (E1-E3) via raw CQT magnitudes folded to
+            # pitch classes — the looped tonic usually dominates the bass.
+            bass_cqt = np.abs(librosa.cqt(harmonic, sr=SAMPLE_RATE,
+                                          fmin=librosa.note_to_hz('E1'),
+                                          n_bins=24))
+            bass_vec = np.zeros(12)
+            for i in range(24):
+                bass_vec[(4 + i) % 12] += bass_cqt[i].mean()  # bin 0 = E
+            bass_total = bass_vec.sum()
+            bass_norm = bass_vec / bass_total if bass_total > 1e-9 else chroma_norm
 
-            candidates.sort(key=lambda c: c['_score'], reverse=True)
-            top5 = candidates[:5]
+            candidates = score_scale_templates(chroma_norm, bass_norm)
+            if selected_pcs:
+                candidates = [
+                    c for c in candidates
+                    if selected_pcs <= {
+                        (NOTE_NAMES.index(c['root']) + iv) % 12
+                        for iv in SCALE_TEMPLATES[c['scale_type']]}
+                ]
+                if not candidates:
+                    return {'success': True, 'candidates': []}
 
-            best = top5[0]['_score'] if top5[0]['_score'] > 0 else 1.0
-            result_candidates = [
-                {'root': c['root'], 'scale_type': c['scale_type'], 'score': round(c['_score'] / best * 100)}
-                for c in top5
-            ]
-
-            print(f"✓ Scale detected: {result_candidates[0]['root']} {result_candidates[0]['scale_type']} ({result_candidates[0]['score']}%)")
+            result_candidates = _top_scale_candidates(candidates)
+            print(f"✓ Scale detected: {result_candidates[0]['root']} "
+                  f"{result_candidates[0]['scale_type']} "
+                  f"({result_candidates[0]['score']}%)")
             return {'success': True, 'candidates': result_candidates}
 
         except Exception as e:
