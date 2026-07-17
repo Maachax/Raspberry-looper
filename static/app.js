@@ -349,7 +349,7 @@
                         const noteIdx = (OPEN_STRINGS[s] + f) % 12;
                         const interval = (noteIdx - rootIdx + 12) % 12;
                         const inScale = intervals.has(interval);
-                        const isPicked = pickedNotes.has(noteIdx);
+                        const isPicked = pickMode && pickedNotes.has(noteIdx);
                         if (!pickMode && !inScale) continue;
                         const isRoot = interval === 0;
                         const isChar = charSet.has(interval);
