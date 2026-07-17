@@ -89,18 +89,32 @@ def make_pedalboard(chain: list):
     return pb.Pedalboard([_make_plugin(e) for e in chain if e.get('enabled', True)])
 
 
+def seam_fade(x: np.ndarray, sample_rate: int) -> np.ndarray:
+    """Copy of x with the same 8ms linear edge fades playback applies at the loop seam."""
+    n = len(x)
+    f = min(int(0.008 * sample_rate), n // 8)
+    if f <= 0:
+        return x.copy()
+    y = np.array(x, dtype=np.float32, copy=True)
+    ramp = np.arange(f, dtype=np.float32) / f
+    y[:f] *= ramp
+    y[n - f:] *= ramp[::-1]
+    return y
+
+
 def render_wet(dry: np.ndarray, chain: list, sample_rate: int) -> np.ndarray:
     """Render dry through the chain, baking wrapped tails so the loop still seams.
 
-    Tiles dry 3x, processes, and returns the final cycle. Empty/all-disabled
-    chain returns an untouched copy of dry.
+    Tiles dry 3x, processes, and returns the final cycle. The dry is seam-faded
+    first so time-based effects don't echo the tile-join step into the loop
+    body. Empty/all-disabled chain returns an untouched copy of dry.
     """
     active = [e for e in (chain or []) if e.get('enabled', True)]
     if not active or len(dry) == 0 or not PEDALBOARD_AVAILABLE:
         return dry.copy()
     board = make_pedalboard(active)
     n = len(dry)
-    tiled = np.tile(dry.astype(np.float32), 3)
+    tiled = np.tile(seam_fade(dry, sample_rate), 3)
     processed = np.asarray(board(tiled, sample_rate, reset=True), dtype=np.float32)
     return processed[2 * n:3 * n].copy()
 

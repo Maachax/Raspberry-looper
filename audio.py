@@ -1393,20 +1393,25 @@ class WebLooper:
             layer_data = []
             for layer in self.layers:
                 layer_data.append({
+                    'id': layer.id,
                     'buffer': layer.buffer[:self.master_length].copy(),
                     'volume': layer.volume,
                     'is_playing': layer.is_playing
                 })
             master_length = self.master_length
             master_vol = self.master_volume
-        
+
         # Process WITHOUT lock
         try:
-            # Mix all layers
+            import effects
+            # Mix all layers (seam-fading overdubs like live playback does)
             mixed = np.zeros(master_length, dtype=np.float32)
             for layer in layer_data:
                 if layer['is_playing']:
-                    mixed += layer['buffer'] * layer['volume']
+                    buf = layer['buffer']
+                    if layer['id'] > 0:
+                        buf = effects.seam_fade(buf, SAMPLE_RATE)
+                    mixed += buf * layer['volume']
             
             # Apply bus reverb (matches live playback) before master volume
             mixed = self._apply_bus_offline(mixed)
@@ -1474,9 +1479,13 @@ class WebLooper:
             buffer = layer.buffer[:layer.length].copy()
             volume = layer.volume
             name = layer.name.replace(" ", "_").lower()
-        
+            is_overdub = layer.id > 0
+
         # Process WITHOUT lock
         try:
+            import effects
+            if is_overdub:
+                buffer = effects.seam_fade(buffer, SAMPLE_RATE)
             # Apply volume
             samples = buffer * volume
             
@@ -1547,10 +1556,14 @@ class WebLooper:
             # Create ZIP file in memory
             zip_buffer = BytesIO()
             
+            import effects
             with ZipFile(zip_buffer, 'w') as zip_file:
                 for layer in layer_data:
+                    buf = layer['buffer']
+                    if layer['id'] > 0:
+                        buf = effects.seam_fade(buf, SAMPLE_RATE)
                     # Apply volume
-                    samples = layer['buffer'] * layer['volume']
+                    samples = buf * layer['volume']
                     
                     # Convert to AudioSegment
                     audio_segment = self._numpy_to_audiosegment(samples)
