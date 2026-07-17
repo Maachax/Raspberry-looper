@@ -76,6 +76,34 @@ def test_export_layer_fades_overdub_seam():
     assert abs(samples[len(samples) // 2]) > 0.45, "body level should be untouched"
 
 
+def test_save_load_roundtrip_does_not_restack_fx():
+    # save_session must store the dry take: load_session re-bakes the fx
+    # chain, so saving the wet buffer applies the effect twice.
+    n = SAMPLE_RATE
+    t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
+    dry = (0.3 * np.sin(2 * np.pi * 220 * t) * np.linspace(1, 0, n)).astype(np.float32)
+
+    looper = WebLooper()
+    looper.layers = [LoopLayer(0, "Master", dry.copy())]
+    looper.master_length = n
+    delay = effects.default_effect('delay')
+    delay['params'].update({'time_s': 0.1, 'feedback': 0.3, 'mix': 0.5})
+    looper.set_loop_chain(0, [delay])
+    wet_before = looper.layers[0].buffer.copy()
+
+    res = looper.save_session('pytest-roundtrip')
+    assert res['success']
+    try:
+        loaded = WebLooper()
+        assert loaded.load_session(res['session_id'])['success']
+        assert np.allclose(loaded.layers[0].dry, dry, atol=1e-6), \
+            "saved session lost the dry take"
+        assert np.allclose(loaded.layers[0].buffer, wet_before, atol=1e-4), \
+            "loaded wet differs from saved wet (fx applied twice?)"
+    finally:
+        looper.delete_session(res['session_id'])
+
+
 def test_export_mixed_leaves_master_layer_unfaded():
     looper = WebLooper()
     master = LoopLayer(0, "Master", np.full(SAMPLE_RATE, 0.3, dtype=np.float32))

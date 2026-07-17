@@ -771,7 +771,9 @@ class WebLooper:
                               'fx_overrides': s.get('fx_overrides', {})} for s in self.sections],
                 'next_section_id': self._next_section_id,
             }
-            buffers = [(l.id, l.buffer[:l.length].copy()) for l in self.layers]
+            # Save the dry take: load_session re-bakes each layer's fx chain,
+            # so saving the wet buffer would apply the effects twice.
+            buffers = [(l.id, l.dry[:l.length].copy()) for l in self.layers]
 
         # Write to disk without lock
         try:
